@@ -1,0 +1,301 @@
+package main
+
+import (
+	"embed"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+)
+
+//go:embed static/*
+var staticFiles embed.FS
+
+func main() {
+	// Initialize database
+	InitDB()
+
+	// Create app instance
+	app := NewApp()
+
+	r := chi.NewRouter()
+
+	// Middleware
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
+
+	// Serve static files
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fileServer := http.FileServer(http.FS(staticFS))
+
+	// Routes
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFileFS(w, r, staticFS, "index.html")
+	})
+
+	r.Get("/static/*", func(w http.ResponseWriter, r *http.Request) {
+		http.StripPrefix("/static/", fileServer).ServeHTTP(w, r)
+	})
+
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
+	// Directory operations
+	r.Get("/api/files", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			http.Error(w, "path parameter required", http.StatusBadRequest)
+			return
+		}
+		files, err := app.ListDirectory(path)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(files)
+	})
+
+	r.Get("/api/directory-size", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			http.Error(w, "path parameter required", http.StatusBadRequest)
+			return
+		}
+		size, err := app.GetDirectorySize(path)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"size": size})
+	})
+
+	// MediaInfo
+	r.Get("/api/mediainfo", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			http.Error(w, "path parameter required", http.StatusBadRequest)
+			return
+		}
+		info, err := app.GetMediaInfo(path)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"mediainfo": info})
+	})
+
+	// Torrent creation
+	r.Post("/api/torrent/create", func(w http.ResponseWriter, r *http.Request) {
+		var req CreateTorrentRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		torrentPath, err := app.CreateTorrent(req.SourcePath, req.Trackers, req.Comment, req.IsPrivate)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"torrentPath": torrentPath})
+	})
+
+	// NFO operations
+	r.Post("/api/nfo/save", func(w http.ResponseWriter, r *http.Request) {
+		var req SaveNfoRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		nfoPath, err := app.SaveNfo(req.SourcePath, req.Content)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"nfoPath": nfoPath})
+	})
+
+	// qBittorrent integration
+	r.Post("/api/qbittorrent/upload", func(w http.ResponseWriter, r *http.Request) {
+		var req QBittorrentRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		err := app.UploadToQBittorrent(req.TorrentPath, req.QbitUrl, req.Username, req.Password)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "uploaded"})
+	})
+
+	r.Post("/api/qbittorrent/remove", func(w http.ResponseWriter, r *http.Request) {
+		var req QBittorrentRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		err := app.RemoveFromQBittorrent(req.TorrentPath, req.QbitUrl, req.Username, req.Password)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "removed"})
+	})
+
+	// La Cale integration
+	r.Post("/api/lacale/upload", func(w http.ResponseWriter, r *http.Request) {
+		var req LaCaleUploadRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		err := app.UploadToLaCale(
+			req.TorrentPath,
+			req.NfoPath,
+			req.Title,
+			req.Description,
+			req.TmdbId,
+			req.MediaType,
+			req.ReleaseInfo,
+			req.Passkey,
+			req.Email,
+			req.Password,
+		)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "uploaded"})
+	})
+
+	// Settings
+	r.Get("/api/settings", func(w http.ResponseWriter, r *http.Request) {
+		settings := app.GetSettings()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(settings)
+	})
+
+	r.Post("/api/settings", func(w http.ResponseWriter, r *http.Request) {
+		var settings AppSettings
+		if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := app.SaveSettings(settings); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "saved"})
+	})
+
+	// Processed files
+	r.Post("/api/processed/mark", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := app.MarkProcessed(req.Path); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "marked"})
+	})
+
+	r.Delete("/api/processed", func(w http.ResponseWriter, r *http.Request) {
+		if err := app.ClearProcessedFiles(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "cleared"})
+	})
+
+	// File operations
+	r.Delete("/api/file", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			http.Error(w, "path parameter required", http.StatusBadRequest)
+			return
+		}
+		if err := app.DeleteFile(path); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+	})
+
+	// Get port from env or default
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	fmt.Printf("AATM API server starting on port %s\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, r))
+}
+
+// Request types
+type CreateTorrentRequest struct {
+	SourcePath string   `json:"sourcePath"`
+	Trackers   []string `json:"trackers"`
+	Comment    string   `json:"comment"`
+	IsPrivate  bool     `json:"isPrivate"`
+}
+
+type SaveNfoRequest struct {
+	SourcePath string `json:"sourcePath"`
+	Content    string `json:"content"`
+}
+
+type QBittorrentRequest struct {
+	TorrentPath string `json:"torrentPath"`
+	QbitUrl     string `json:"qbitUrl"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+}
+
+type LaCaleUploadRequest struct {
+	TorrentPath string      `json:"torrentPath"`
+	NfoPath     string      `json:"nfoPath"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	TmdbId      string      `json:"tmdbId"`
+	MediaType   string      `json:"mediaType"`
+	ReleaseInfo ReleaseInfo `json:"releaseInfo"`
+	Passkey     string      `json:"passkey"`
+	Email       string      `json:"email"`
+	Password    string      `json:"password"`
+}

@@ -1,0 +1,1710 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AATM - Amazing Automatic Torrent Maker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-secondary: #1a1a2e;
+            --bg-tertiary: #16213e;
+            --bg-hover: #1f2847;
+            --accent: #00d9ff;
+            --accent-dim: #0099b3;
+            --text-primary: #eee;
+            --text-secondary: #888;
+            --text-muted: #555;
+            --success: #0f5132;
+            --success-text: #75b798;
+            --warning: #664d03;
+            --warning-text: #ffda6a;
+            --danger: #842029;
+            --danger-text: #ea868f;
+            --border: #2a2a4a;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Layout */
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 220px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 1.5rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-header h1 {
+            color: var(--accent);
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .sidebar-header .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        .nav-menu {
+            flex: 1;
+            padding: 1rem 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1.25rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: var(--bg-tertiary);
+            color: var(--accent);
+            border-left-color: var(--accent);
+        }
+
+        .nav-item svg {
+            width: 20px;
+            height: 20px;
+            margin-right: 0.75rem;
+        }
+
+        .api-status {
+            padding: 1rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.8rem;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-indicator.online {
+            background: var(--success-text);
+            box-shadow: 0 0 6px var(--success-text);
+        }
+
+        .status-indicator.offline {
+            background: var(--danger-text);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header h2 {
+            color: var(--text-primary);
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+
+        .content-area {
+            flex: 1;
+            overflow: auto;
+            padding: 1.5rem;
+        }
+
+        /* Page: Files Explorer */
+        .explorer-container {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 1.5rem;
+            height: 100%;
+        }
+
+        .file-browser {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .breadcrumb {
+            padding: 0.75rem 1rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .breadcrumb-item {
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .breadcrumb-item:hover {
+            color: var(--accent);
+        }
+
+        .breadcrumb-item.current {
+            color: var(--text-primary);
+        }
+
+        .breadcrumb-separator {
+            color: var(--text-muted);
+        }
+
+        .file-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .file-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .file-item.selected {
+            background: var(--bg-tertiary);
+            border-left: 3px solid var(--accent);
+        }
+
+        .file-item.processed {
+            opacity: 0.5;
+        }
+
+        .file-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .file-icon.folder {
+            color: var(--warning-text);
+        }
+
+        .file-icon.video {
+            color: var(--accent);
+        }
+
+        .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-size {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-left: 1rem;
+        }
+
+        .processed-badge {
+            background: var(--success);
+            color: var(--success-text);
+            font-size: 0.7rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }
+
+        /* Details Panel */
+        .details-panel {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .details-header {
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .details-header h3 {
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .details-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .detail-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-section h4 {
+            color: var(--accent);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+        }
+
+        .mediainfo-output {
+            background: var(--bg-primary);
+            border-radius: 4px;
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.75rem;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            color: var(--text-secondary);
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            color: var(--text-secondary);
+        }
+
+        .detail-value {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            padding: 1rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            padding: 0.6rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-primary);
+            font-weight: 500;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-dim);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-hover);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: var(--danger-text);
+        }
+
+        .btn-danger:hover {
+            opacity: 0.8;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: var(--success-text);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-full {
+            width: 100%;
+            justify-content: center;
+        }
+
+        /* Page: Create Workflow */
+        .workflow-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .workflow-steps {
+            display: flex;
+            margin-bottom: 2rem;
+            padding: 0 1rem;
+        }
+
+        .workflow-step {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        .workflow-step::after {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background: var(--border);
+        }
+
+        .workflow-step:last-child::after {
+            display: none;
+        }
+
+        .step-number {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 600;
+            z-index: 1;
+            transition: all 0.3s;
+        }
+
+        .workflow-step.active .step-number {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        .workflow-step.completed .step-number {
+            background: var(--success);
+            border-color: var(--success-text);
+            color: var(--success-text);
+        }
+
+        .step-label {
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .workflow-step.active .step-label {
+            color: var(--accent);
+        }
+
+        .workflow-content {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .workflow-title {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        .workflow-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.6rem 0.75rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        textarea.form-control {
+            min-height: 150px;
+            resize: vertical;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.8rem;
+        }
+
+        .form-check {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-check input {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+        }
+
+        /* Settings Page */
+        .settings-container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .settings-section {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .settings-section h3 {
+            color: var(--accent);
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* History Page */
+        .history-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .history-list {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .history-item {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-path {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .alert-success {
+            background: var(--success);
+            color: var(--success-text);
+        }
+
+        .alert-danger {
+            background: var(--danger);
+            color: var(--danger-text);
+        }
+
+        .alert-warning {
+            background: var(--warning);
+            color: var(--warning-text);
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 0.75rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        /* Hidden */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 1000;
+        }
+
+        .toast {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-top: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: slideIn 0.3s ease;
+            max-width: 400px;
+        }
+
+        .toast.success {
+            border-color: var(--success-text);
+        }
+
+        .toast.error {
+            border-color: var(--danger-text);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .explorer-container {
+                grid-template-columns: 1fr;
+            }
+
+            .details-panel {
+                max-height: 400px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 60px;
+            }
+
+            .sidebar-header h1,
+            .sidebar-header .subtitle,
+            .nav-item span,
+            .api-status span {
+                display: none;
+            }
+
+            .nav-item {
+                justify-content: center;
+                padding: 1rem;
+            }
+
+            .nav-item svg {
+                margin-right: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1>AATM</h1>
+                <p class="subtitle">Torrent Maker</p>
+            </div>
+            <div class="nav-menu">
+                <div class="nav-item active" data-page="files">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span>Explorateur</span>
+                </div>
+                <div class="nav-item" data-page="create">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="16"/>
+                        <line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
+                    <span>Creer Torrent</span>
+                </div>
+                <div class="nav-item" data-page="settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    <span>Parametres</span>
+                </div>
+                <div class="nav-item" data-page="history">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span>Historique</span>
+                </div>
+            </div>
+            <div class="api-status">
+                <span class="status-indicator online" id="statusIndicator"></span>
+                <span id="statusText">API en ligne</span>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="header">
+                <h2 id="pageTitle">Explorateur de fichiers</h2>
+                <div id="headerActions"></div>
+            </header>
+
+            <div class="content-area">
+                <!-- Files Page -->
+                <div id="page-files" class="page">
+                    <div class="explorer-container">
+                        <div class="file-browser">
+                            <div class="breadcrumb" id="breadcrumb">
+                                <span class="breadcrumb-item current">/</span>
+                            </div>
+                            <div class="file-list" id="fileList">
+                                <div class="loading">
+                                    <div class="spinner"></div>
+                                    Chargement...
+                                </div>
+                            </div>
+                        </div>
+                        <div class="details-panel">
+                            <div class="details-header">
+                                <h3 id="detailsTitle">Details</h3>
+                            </div>
+                            <div class="details-content" id="detailsContent">
+                                <div class="empty-state">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                    </svg>
+                                    <p>Selectionnez un fichier pour voir ses details</p>
+                                </div>
+                            </div>
+                            <div class="action-buttons" id="fileActions" style="display:none;">
+                                <button class="btn btn-primary btn-full" id="btnStartWorkflow">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <line x1="12" y1="8" x2="12" y2="16"/>
+                                        <line x1="8" y1="12" x2="16" y2="12"/>
+                                    </svg>
+                                    Creer un torrent
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Create Workflow Page -->
+                <div id="page-create" class="page hidden">
+                    <div class="workflow-container">
+                        <div class="workflow-steps">
+                            <div class="workflow-step active" data-step="1">
+                                <div class="step-number">1</div>
+                                <div class="step-label">Source</div>
+                            </div>
+                            <div class="workflow-step" data-step="2">
+                                <div class="step-number">2</div>
+                                <div class="step-label">MediaInfo</div>
+                            </div>
+                            <div class="workflow-step" data-step="3">
+                                <div class="step-number">3</div>
+                                <div class="step-label">Torrent</div>
+                            </div>
+                            <div class="workflow-step" data-step="4">
+                                <div class="step-number">4</div>
+                                <div class="step-label">Creation</div>
+                            </div>
+                            <div class="workflow-step" data-step="5">
+                                <div class="step-number">5</div>
+                                <div class="step-label">Upload</div>
+                            </div>
+                        </div>
+
+                        <!-- Step 1: Source Selection -->
+                        <div class="workflow-content" id="step-1">
+                            <h3 class="workflow-title">Selection de la source</h3>
+                            <div id="selectedSource">
+                                <div class="empty-state">
+                                    <p>Aucune source selectionnee</p>
+                                    <p style="font-size:0.85rem; margin-top:0.5rem;">Selectionnez un fichier ou dossier depuis l'explorateur</p>
+                                </div>
+                            </div>
+                            <div class="workflow-actions">
+                                <button class="btn btn-secondary" onclick="navigateTo('files')">
+                                    Choisir depuis l'explorateur
+                                </button>
+                                <button class="btn btn-primary" id="btnStep1Next" disabled>
+                                    Suivant
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: MediaInfo & NFO -->
+                        <div class="workflow-content hidden" id="step-2">
+                            <h3 class="workflow-title">MediaInfo et NFO</h3>
+                            <div class="form-group">
+                                <label>Apercu MediaInfo</label>
+                                <div class="mediainfo-output" id="workflowMediainfo">Chargement...</div>
+                            </div>
+                            <div class="form-group">
+                                <label>Contenu NFO (editable)</label>
+                                <textarea class="form-control" id="nfoContent" placeholder="Le contenu MediaInfo sera copie ici..."></textarea>
+                            </div>
+                            <div class="workflow-actions">
+                                <button class="btn btn-secondary" onclick="goToStep(1)">Precedent</button>
+                                <button class="btn btn-primary" onclick="goToStep(3)">Suivant</button>
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Torrent Configuration -->
+                        <div class="workflow-content hidden" id="step-3">
+                            <h3 class="workflow-title">Configuration du torrent</h3>
+                            <div class="form-group">
+                                <label>Trackers (un par ligne)</label>
+                                <textarea class="form-control" id="trackersInput" rows="4" placeholder="http://tracker.example.com:6969/announce"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Commentaire</label>
+                                <input type="text" class="form-control" id="torrentComment" placeholder="AATM - Amazing Automatic Torrent Maker">
+                            </div>
+                            <div class="form-group">
+                                <div class="form-check">
+                                    <input type="checkbox" id="torrentPrivate" checked>
+                                    <label for="torrentPrivate">Torrent prive</label>
+                                </div>
+                            </div>
+                            <div class="workflow-actions">
+                                <button class="btn btn-secondary" onclick="goToStep(2)">Precedent</button>
+                                <button class="btn btn-primary" onclick="goToStep(4)">Suivant</button>
+                            </div>
+                        </div>
+
+                        <!-- Step 4: Creation -->
+                        <div class="workflow-content hidden" id="step-4">
+                            <h3 class="workflow-title">Creation</h3>
+                            <div id="creationStatus">
+                                <p>Pret a creer le torrent et le NFO.</p>
+                                <div class="detail-section" style="margin-top: 1rem;">
+                                    <h4>Resume</h4>
+                                    <div class="detail-row">
+                                        <span class="detail-label">Source</span>
+                                        <span class="detail-value" id="summarySource">-</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span class="detail-label">Trackers</span>
+                                        <span class="detail-value" id="summaryTrackers">-</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span class="detail-label">Prive</span>
+                                        <span class="detail-value" id="summaryPrivate">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="creationProgress" class="hidden">
+                                <div class="loading">
+                                    <div class="spinner"></div>
+                                    Creation en cours...
+                                </div>
+                            </div>
+                            <div id="creationResult" class="hidden"></div>
+                            <div class="workflow-actions">
+                                <button class="btn btn-secondary" onclick="goToStep(3)" id="btnStep4Back">Precedent</button>
+                                <button class="btn btn-primary" id="btnCreateTorrent">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                    </svg>
+                                    Creer le torrent
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Step 5: Upload -->
+                        <div class="workflow-content hidden" id="step-5">
+                            <h3 class="workflow-title">Upload</h3>
+                            <div id="uploadOptions">
+                                <div class="detail-section">
+                                    <h4>Fichiers crees</h4>
+                                    <div class="detail-row">
+                                        <span class="detail-label">Torrent</span>
+                                        <span class="detail-value" id="createdTorrentPath">-</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span class="detail-label">NFO</span>
+                                        <span class="detail-value" id="createdNfoPath">-</span>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                                    <button class="btn btn-secondary" id="btnUploadQbit" style="flex:1;">
+                                        Upload qBittorrent
+                                    </button>
+                                    <button class="btn btn-secondary" id="btnUploadLaCale" style="flex:1;">
+                                        Upload La-Cale
+                                    </button>
+                                </div>
+                                <div id="uploadStatus" style="margin-top: 1rem;"></div>
+                            </div>
+                            <div class="workflow-actions">
+                                <button class="btn btn-secondary" onclick="goToStep(4)">Precedent</button>
+                                <button class="btn btn-success" id="btnFinish">
+                                    Terminer
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Page -->
+                <div id="page-settings" class="page hidden">
+                    <div class="settings-container">
+                        <div class="settings-section">
+                            <h3>Chemins</h3>
+                            <div class="form-group">
+                                <label>Chemin racine des medias</label>
+                                <input type="text" class="form-control" id="settingRootPath" placeholder="/media">
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>Trackers par defaut</h3>
+                            <div class="form-group">
+                                <label>Liste des trackers (un par ligne)</label>
+                                <textarea class="form-control" id="settingTrackers" rows="4" placeholder="http://tracker.example.com/announce"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>qBittorrent</h3>
+                            <div class="form-group">
+                                <label>URL</label>
+                                <input type="text" class="form-control" id="settingQbitUrl" placeholder="http://localhost:8080">
+                            </div>
+                            <div class="form-group">
+                                <label>Nom d'utilisateur</label>
+                                <input type="text" class="form-control" id="settingQbitUsername" placeholder="admin">
+                            </div>
+                            <div class="form-group">
+                                <label>Mot de passe</label>
+                                <input type="password" class="form-control" id="settingQbitPassword" placeholder="********">
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>La-Cale</h3>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" class="form-control" id="settingLaCaleEmail" placeholder="email@example.com">
+                            </div>
+                            <div class="form-group">
+                                <label>Mot de passe</label>
+                                <input type="password" class="form-control" id="settingLaCalePassword" placeholder="********">
+                            </div>
+                            <div class="form-group">
+                                <label>Passkey</label>
+                                <input type="text" class="form-control" id="settingLaCalePasskey" placeholder="votre-passkey">
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>Affichage</h3>
+                            <div class="form-group">
+                                <div class="form-check">
+                                    <input type="checkbox" id="settingShowProcessed">
+                                    <label for="settingShowProcessed">Afficher les fichiers deja traites</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary btn-full" id="btnSaveSettings">
+                            Sauvegarder les parametres
+                        </button>
+                    </div>
+                </div>
+
+                <!-- History Page -->
+                <div id="page-history" class="page hidden">
+                    <div class="history-container">
+                        <div class="history-header">
+                            <h3>Fichiers traites</h3>
+                            <button class="btn btn-danger" id="btnClearHistory">
+                                Effacer l'historique
+                            </button>
+                        </div>
+                        <div class="history-list" id="historyList">
+                            <div class="loading">
+                                <div class="spinner"></div>
+                                Chargement...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // State
+        const state = {
+            currentPage: 'files',
+            currentPath: '/media',
+            selectedFile: null,
+            settings: {},
+            workflowStep: 1,
+            createdTorrentPath: null,
+            createdNfoPath: null,
+            processedFiles: []
+        };
+
+        // API Base URL (same host)
+        const API_BASE = '';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initNavigation();
+            loadSettings();
+            checkApiStatus();
+            setInterval(checkApiStatus, 30000);
+        });
+
+        // Navigation
+        function initNavigation() {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    navigateTo(item.dataset.page);
+                });
+            });
+        }
+
+        function navigateTo(page) {
+            state.currentPage = page;
+
+            // Update nav
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.page === page);
+            });
+
+            // Update page visibility
+            document.querySelectorAll('.page').forEach(p => {
+                p.classList.add('hidden');
+            });
+            document.getElementById(`page-${page}`).classList.remove('hidden');
+
+            // Update title
+            const titles = {
+                files: 'Explorateur de fichiers',
+                create: 'Creer un torrent',
+                settings: 'Parametres',
+                history: 'Historique'
+            };
+            document.getElementById('pageTitle').textContent = titles[page];
+
+            // Page-specific init
+            if (page === 'files') {
+                loadFiles(state.currentPath);
+            } else if (page === 'settings') {
+                loadSettingsForm();
+            } else if (page === 'history') {
+                loadHistory();
+            } else if (page === 'create') {
+                updateWorkflowUI();
+            }
+        }
+
+        // API Status
+        async function checkApiStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/health`);
+                const indicator = document.getElementById('statusIndicator');
+                const text = document.getElementById('statusText');
+                if (res.ok) {
+                    indicator.className = 'status-indicator online';
+                    text.textContent = 'API en ligne';
+                } else {
+                    indicator.className = 'status-indicator offline';
+                    text.textContent = 'API hors ligne';
+                }
+            } catch (e) {
+                document.getElementById('statusIndicator').className = 'status-indicator offline';
+                document.getElementById('statusText').textContent = 'API hors ligne';
+            }
+        }
+
+        // Files
+        async function loadFiles(path) {
+            const fileList = document.getElementById('fileList');
+            fileList.innerHTML = '<div class="loading"><div class="spinner"></div>Chargement...</div>';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(path)}`);
+                if (!res.ok) throw new Error('Erreur API');
+                const files = await res.json();
+
+                state.currentPath = path;
+                updateBreadcrumb(path);
+                renderFiles(files);
+            } catch (e) {
+                fileList.innerHTML = `<div class="empty-state"><p>Erreur: ${e.message}</p></div>`;
+            }
+        }
+
+        function updateBreadcrumb(path) {
+            const breadcrumb = document.getElementById('breadcrumb');
+            const parts = path.split('/').filter(p => p);
+
+            let html = '<span class="breadcrumb-item" onclick="loadFiles(\'/\')">~</span>';
+            let currentPath = '';
+
+            parts.forEach((part, i) => {
+                currentPath += '/' + part;
+                const isLast = i === parts.length - 1;
+                html += `<span class="breadcrumb-separator">/</span>`;
+                if (isLast) {
+                    html += `<span class="breadcrumb-item current">${part}</span>`;
+                } else {
+                    html += `<span class="breadcrumb-item" onclick="loadFiles('${currentPath}')">${part}</span>`;
+                }
+            });
+
+            breadcrumb.innerHTML = html;
+        }
+
+        function renderFiles(files) {
+            const fileList = document.getElementById('fileList');
+
+            if (!files || files.length === 0) {
+                fileList.innerHTML = '<div class="empty-state"><p>Aucun fichier video trouve</p></div>';
+                return;
+            }
+
+            // Filter based on settings
+            let filteredFiles = files;
+            if (!state.settings.showProcessed) {
+                filteredFiles = files.filter(f => !f.isProcessed);
+            }
+
+            // Sort: folders first, then by name
+            filteredFiles.sort((a, b) => {
+                if (a.isDir && !b.isDir) return -1;
+                if (!a.isDir && b.isDir) return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            fileList.innerHTML = filteredFiles.map(file => `
+                <div class="file-item ${file.isProcessed ? 'processed' : ''}"
+                     data-name="${file.name}"
+                     data-isdir="${file.isDir}"
+                     onclick="selectFile('${file.name}', ${file.isDir})">
+                    <svg class="file-icon ${file.isDir ? 'folder' : 'video'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        ${file.isDir
+                            ? '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>'
+                            : '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>'}
+                    </svg>
+                    <span class="file-name">${file.name}</span>
+                    ${file.isProcessed ? '<span class="processed-badge">Traite</span>' : ''}
+                    <span class="file-size">${file.isDir ? 'Dossier' : formatSize(file.size)}</span>
+                </div>
+            `).join('');
+        }
+
+        async function selectFile(name, isDir) {
+            const fullPath = state.currentPath + '/' + name;
+
+            // Mark as selected in UI
+            document.querySelectorAll('.file-item').forEach(el => {
+                el.classList.toggle('selected', el.dataset.name === name);
+            });
+
+            if (isDir) {
+                // Single click navigates into folder
+                loadFiles(fullPath);
+                state.selectedFile = null;
+                return;
+            }
+
+            state.selectedFile = fullPath;
+            document.getElementById('detailsTitle').textContent = name;
+            document.getElementById('fileActions').style.display = 'flex';
+
+            // Load details
+            const detailsContent = document.getElementById('detailsContent');
+            detailsContent.innerHTML = '<div class="loading"><div class="spinner"></div>Chargement...</div>';
+
+            try {
+                // Get size
+                const sizeRes = await fetch(`${API_BASE}/api/directory-size?path=${encodeURIComponent(fullPath)}`);
+                const sizeData = await sizeRes.json();
+
+                let html = `
+                    <div class="detail-section">
+                        <h4>Informations</h4>
+                        <div class="detail-row">
+                            <span class="detail-label">Chemin</span>
+                            <span class="detail-value" style="word-break:break-all;font-size:0.85rem;">${fullPath}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Taille</span>
+                            <span class="detail-value">${sizeData.size}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Type</span>
+                            <span class="detail-value">${isDir ? 'Dossier' : 'Fichier video'}</span>
+                        </div>
+                    </div>
+                `;
+
+                // Get MediaInfo for video files
+                if (!isDir) {
+                    const mediaRes = await fetch(`${API_BASE}/api/mediainfo?path=${encodeURIComponent(fullPath)}`);
+                    const mediaData = await mediaRes.json();
+                    html += `
+                        <div class="detail-section">
+                            <h4>MediaInfo</h4>
+                            <div class="mediainfo-output">${escapeHtml(mediaData.mediainfo)}</div>
+                        </div>
+                    `;
+                }
+
+                detailsContent.innerHTML = html;
+            } catch (e) {
+                detailsContent.innerHTML = `<div class="alert alert-danger">Erreur: ${e.message}</div>`;
+            }
+
+            // Setup workflow button
+            document.getElementById('btnStartWorkflow').onclick = () => {
+                startWorkflow(fullPath, name);
+            };
+        }
+
+        // Workflow
+        function startWorkflow(path, name) {
+            state.selectedFile = path;
+            state.workflowStep = 1;
+
+            // Update source display
+            document.getElementById('selectedSource').innerHTML = `
+                <div class="alert alert-success">
+                    <strong>Source selectionnee:</strong> ${name}
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Chemin complet</span>
+                    <span class="detail-value" style="word-break:break-all;font-size:0.85rem;">${path}</span>
+                </div>
+            `;
+            document.getElementById('btnStep1Next').disabled = false;
+
+            navigateTo('create');
+        }
+
+        function updateWorkflowUI() {
+            // Update steps
+            document.querySelectorAll('.workflow-step').forEach(step => {
+                const stepNum = parseInt(step.dataset.step);
+                step.classList.remove('active', 'completed');
+                if (stepNum === state.workflowStep) {
+                    step.classList.add('active');
+                } else if (stepNum < state.workflowStep) {
+                    step.classList.add('completed');
+                }
+            });
+
+            // Show current step content
+            for (let i = 1; i <= 5; i++) {
+                document.getElementById(`step-${i}`).classList.toggle('hidden', i !== state.workflowStep);
+            }
+        }
+
+        async function goToStep(step) {
+            state.workflowStep = step;
+            updateWorkflowUI();
+
+            if (step === 2) {
+                // Load MediaInfo
+                const mediaInfoEl = document.getElementById('workflowMediainfo');
+                const nfoEl = document.getElementById('nfoContent');
+
+                mediaInfoEl.textContent = 'Chargement...';
+
+                try {
+                    // For folders, find the first video file
+                    let targetPath = state.selectedFile;
+
+                    const res = await fetch(`${API_BASE}/api/mediainfo?path=${encodeURIComponent(targetPath)}`);
+                    const data = await res.json();
+
+                    mediaInfoEl.textContent = data.mediainfo;
+                    nfoEl.value = data.mediainfo;
+                } catch (e) {
+                    mediaInfoEl.textContent = 'Erreur: ' + e.message;
+                }
+            } else if (step === 3) {
+                // Load default trackers
+                if (state.settings.torrentTrackers) {
+                    document.getElementById('trackersInput').value = state.settings.torrentTrackers;
+                }
+            } else if (step === 4) {
+                // Show summary
+                const trackers = document.getElementById('trackersInput').value.split('\n').filter(t => t.trim());
+                document.getElementById('summarySource').textContent = state.selectedFile.split('/').pop();
+                document.getElementById('summaryTrackers').textContent = trackers.length + ' tracker(s)';
+                document.getElementById('summaryPrivate').textContent = document.getElementById('torrentPrivate').checked ? 'Oui' : 'Non';
+
+                // Reset creation state
+                document.getElementById('creationStatus').classList.remove('hidden');
+                document.getElementById('creationProgress').classList.add('hidden');
+                document.getElementById('creationResult').classList.add('hidden');
+                document.getElementById('btnCreateTorrent').disabled = false;
+                document.getElementById('btnStep4Back').disabled = false;
+            }
+        }
+
+        // Setup step navigation
+        document.getElementById('btnStep1Next').addEventListener('click', () => goToStep(2));
+
+        // Create torrent
+        document.getElementById('btnCreateTorrent').addEventListener('click', async () => {
+            const btn = document.getElementById('btnCreateTorrent');
+            btn.disabled = true;
+            document.getElementById('btnStep4Back').disabled = true;
+            document.getElementById('creationStatus').classList.add('hidden');
+            document.getElementById('creationProgress').classList.remove('hidden');
+
+            const trackers = document.getElementById('trackersInput').value.split('\n').filter(t => t.trim());
+            const comment = document.getElementById('torrentComment').value || 'AATM';
+            const isPrivate = document.getElementById('torrentPrivate').checked;
+            const nfoContent = document.getElementById('nfoContent').value;
+
+            try {
+                // Save NFO first
+                const nfoRes = await fetch(`${API_BASE}/api/nfo/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sourcePath: state.selectedFile,
+                        content: nfoContent
+                    })
+                });
+                if (!nfoRes.ok) throw new Error('Erreur lors de la sauvegarde du NFO');
+                const nfoData = await nfoRes.json();
+                state.createdNfoPath = nfoData.nfoPath;
+
+                // Create torrent
+                const torrentRes = await fetch(`${API_BASE}/api/torrent/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sourcePath: state.selectedFile,
+                        trackers: trackers,
+                        comment: comment,
+                        isPrivate: isPrivate
+                    })
+                });
+                if (!torrentRes.ok) throw new Error('Erreur lors de la creation du torrent');
+                const torrentData = await torrentRes.json();
+                state.createdTorrentPath = torrentData.torrentPath;
+
+                // Mark as processed
+                await fetch(`${API_BASE}/api/processed/mark`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: state.selectedFile })
+                });
+
+                document.getElementById('creationProgress').classList.add('hidden');
+                document.getElementById('creationResult').classList.remove('hidden');
+                document.getElementById('creationResult').innerHTML = `
+                    <div class="alert alert-success">
+                        Torrent et NFO crees avec succes!
+                    </div>
+                `;
+
+                showToast('Torrent cree avec succes!', 'success');
+
+                // Auto advance to step 5
+                setTimeout(() => goToStep(5), 1000);
+
+            } catch (e) {
+                document.getElementById('creationProgress').classList.add('hidden');
+                document.getElementById('creationResult').classList.remove('hidden');
+                document.getElementById('creationResult').innerHTML = `
+                    <div class="alert alert-danger">Erreur: ${e.message}</div>
+                `;
+                btn.disabled = false;
+                document.getElementById('btnStep4Back').disabled = false;
+                showToast('Erreur: ' + e.message, 'error');
+            }
+        });
+
+        // Step 5: Upload
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('btnUploadQbit').addEventListener('click', uploadToQBittorrent);
+            document.getElementById('btnUploadLaCale').addEventListener('click', uploadToLaCale);
+            document.getElementById('btnFinish').addEventListener('click', finishWorkflow);
+        });
+
+        async function uploadToQBittorrent() {
+            const statusEl = document.getElementById('uploadStatus');
+            statusEl.innerHTML = '<div class="loading"><div class="spinner"></div>Upload vers qBittorrent...</div>';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/qbittorrent/upload`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        torrentPath: state.createdTorrentPath,
+                        qbitUrl: state.settings.qbitUrl || 'http://localhost:8081',
+                        username: state.settings.qbitUsername || 'admin',
+                        password: state.settings.qbitPassword || 'adminadmin'
+                    })
+                });
+                if (!res.ok) throw new Error('Erreur upload qBittorrent');
+
+                statusEl.innerHTML = '<div class="alert alert-success">Upload qBittorrent reussi!</div>';
+                showToast('Upload qBittorrent reussi!', 'success');
+            } catch (e) {
+                statusEl.innerHTML = `<div class="alert alert-danger">Erreur: ${e.message}</div>`;
+                showToast('Erreur: ' + e.message, 'error');
+            }
+        }
+
+        async function uploadToLaCale() {
+            const statusEl = document.getElementById('uploadStatus');
+            statusEl.innerHTML = '<div class="loading"><div class="spinner"></div>Upload vers La-Cale...</div>';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/lacale/upload`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        torrentPath: state.createdTorrentPath,
+                        nfoPath: state.createdNfoPath,
+                        title: state.selectedFile.split('/').pop(),
+                        description: '',
+                        tmdbId: '',
+                        mediaType: 'movie',
+                        releaseInfo: {},
+                        passkey: state.settings.passkey,
+                        email: state.settings.laCaleEmail,
+                        password: state.settings.laCalePassword
+                    })
+                });
+                if (!res.ok) throw new Error('Erreur upload La-Cale');
+
+                statusEl.innerHTML = '<div class="alert alert-success">Upload La-Cale reussi!</div>';
+                showToast('Upload La-Cale reussi!', 'success');
+            } catch (e) {
+                statusEl.innerHTML = `<div class="alert alert-danger">Erreur: ${e.message}</div>`;
+                showToast('Erreur: ' + e.message, 'error');
+            }
+        }
+
+        function finishWorkflow() {
+            // Update step 5 display with created paths
+            document.getElementById('createdTorrentPath').textContent = state.createdTorrentPath || '-';
+            document.getElementById('createdNfoPath').textContent = state.createdNfoPath || '-';
+
+            // Reset state
+            state.selectedFile = null;
+            state.createdTorrentPath = null;
+            state.createdNfoPath = null;
+            state.workflowStep = 1;
+
+            // Go back to files
+            navigateTo('files');
+            showToast('Workflow termine!', 'success');
+        }
+
+        // Settings
+        async function loadSettings() {
+            try {
+                const res = await fetch(`${API_BASE}/api/settings`);
+                if (res.ok) {
+                    state.settings = await res.json();
+                    // Set default root path if not set
+                    if (!state.settings.rootPath) {
+                        state.settings.rootPath = '/media';
+                    }
+                    state.currentPath = state.settings.rootPath;
+                    loadFiles(state.currentPath);
+                }
+            } catch (e) {
+                console.error('Error loading settings:', e);
+                loadFiles('/media');
+            }
+        }
+
+        function loadSettingsForm() {
+            document.getElementById('settingRootPath').value = state.settings.rootPath || '/media';
+            document.getElementById('settingTrackers').value = state.settings.torrentTrackers || '';
+            document.getElementById('settingQbitUrl').value = state.settings.qbitUrl || 'http://localhost:8081';
+            document.getElementById('settingQbitUsername').value = state.settings.qbitUsername || 'admin';
+            document.getElementById('settingQbitPassword').value = state.settings.qbitPassword || 'adminadmin';
+            document.getElementById('settingLaCaleEmail').value = state.settings.laCaleEmail || '';
+            document.getElementById('settingLaCalePassword').value = state.settings.laCalePassword || '';
+            document.getElementById('settingLaCalePasskey').value = state.settings.passkey || '';
+            document.getElementById('settingShowProcessed').checked = state.settings.showProcessed || false;
+        }
+
+        document.getElementById('btnSaveSettings').addEventListener('click', async () => {
+            const settings = {
+                rootPath: document.getElementById('settingRootPath').value,
+                torrentTrackers: document.getElementById('settingTrackers').value,
+                qbitUrl: document.getElementById('settingQbitUrl').value,
+                qbitUsername: document.getElementById('settingQbitUsername').value,
+                qbitPassword: document.getElementById('settingQbitPassword').value,
+                laCaleEmail: document.getElementById('settingLaCaleEmail').value,
+                laCalePassword: document.getElementById('settingLaCalePassword').value,
+                passkey: document.getElementById('settingLaCalePasskey').value,
+                showProcessed: document.getElementById('settingShowProcessed').checked
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/api/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                if (!res.ok) throw new Error('Erreur sauvegarde');
+
+                state.settings = settings;
+                state.currentPath = settings.rootPath;
+                showToast('Parametres sauvegardes!', 'success');
+            } catch (e) {
+                showToast('Erreur: ' + e.message, 'error');
+            }
+        });
+
+        // History
+        async function loadHistory() {
+            const historyList = document.getElementById('historyList');
+            historyList.innerHTML = '<div class="loading"><div class="spinner"></div>Chargement...</div>';
+
+            try {
+                // Get processed files from the files endpoint by scanning root
+                const res = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(state.settings.rootPath || '/media')}`);
+                const files = await res.json();
+
+                const processed = files.filter(f => f.isProcessed);
+
+                if (processed.length === 0) {
+                    historyList.innerHTML = '<div class="empty-state"><p>Aucun fichier traite</p></div>';
+                    return;
+                }
+
+                historyList.innerHTML = processed.map(file => `
+                    <div class="history-item">
+                        <span class="history-path">${file.name}</span>
+                    </div>
+                `).join('');
+            } catch (e) {
+                historyList.innerHTML = `<div class="alert alert-danger">Erreur: ${e.message}</div>`;
+            }
+        }
+
+        document.getElementById('btnClearHistory').addEventListener('click', async () => {
+            if (!confirm('Voulez-vous vraiment effacer tout l\'historique?')) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/processed`, {
+                    method: 'DELETE'
+                });
+                if (!res.ok) throw new Error('Erreur suppression');
+
+                showToast('Historique efface!', 'success');
+                loadHistory();
+            } catch (e) {
+                showToast('Erreur: ' + e.message, 'error');
+            }
+        });
+
+        // Utilities
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;color:var(--${type === 'success' ? 'success-text' : 'danger-text'});">
+                    ${type === 'success'
+                        ? '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'
+                        : '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'}
+                </svg>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

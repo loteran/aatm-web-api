@@ -1,0 +1,14 @@
+# Data persistence (contains user settings and credentials)
+data/
+qbt-config/
+torrents/
+
+# Environment file (contains user-specific config)
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Old source code
+source/
