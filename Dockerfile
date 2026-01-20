@@ -20,13 +20,18 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o aatm-api .
 # Runtime stage
 FROM debian:bookworm-slim
 
-# Install mediainfo and qBittorrent
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    mediainfo \
-    ca-certificates \
-    qbittorrent-nox \
-    supervisor \
-    && rm -rf /var/lib/apt/lists/*
+# Install dependencies (split for better QEMU compatibility)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends mediainfo supervisor && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends qbittorrent-nox && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates || true && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

@@ -96,7 +96,7 @@ services:
 
 - La configuration est persistante dans `/data`
 - qBittorrent est intégré dans le conteneur
-- Compatible architecture `arm64` (Raspberry Pi)
+- Compatible architectures `amd64` (PC/UNRAID) et `arm64` (Raspberry Pi)
 
 ---
 

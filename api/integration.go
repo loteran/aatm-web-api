@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
@@ -297,11 +298,14 @@ func (a *App) UploadToLaCale(torrentPath string, nfoPath string, title string, d
 	}
 	defer uploadResp.Body.Close()
 
-	if uploadResp.StatusCode != 200 {
-		respBody, err := io.ReadAll(uploadResp.Body)
-		if err != nil {
-			return fmt.Errorf("API Error (Status %d) - Failed to read body: %v", uploadResp.StatusCode, err)
-		}
+	respBody, err := io.ReadAll(uploadResp.Body)
+	if err != nil {
+		return fmt.Errorf("Failed to read response body: %v", err)
+	}
+
+	log.Printf("La Cale Upload Response - Status: %d, Body: %s", uploadResp.StatusCode, string(respBody))
+
+	if uploadResp.StatusCode != 200 && uploadResp.StatusCode != 201 {
 		return fmt.Errorf("API Error (Status %d) | Response: %s", uploadResp.StatusCode, string(respBody))
 	}
 

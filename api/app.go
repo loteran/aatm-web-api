@@ -187,7 +187,16 @@ func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string
 	}
 	mi.InfoBytes = infoBytes
 
-	outputPath := sourcePath + ".torrent"
+	// Determine output path
+	// If source is in /host (read-only), save torrent to /torrents instead
+	baseName := filepath.Base(sourcePath)
+	var outputPath string
+	if strings.HasPrefix(sourcePath, "/host") {
+		outputPath = filepath.Join("/torrents", baseName+".torrent")
+	} else {
+		outputPath = sourcePath + ".torrent"
+	}
+
 	outFile, err := os.Create(outputPath)
 	if err != nil {
 		return "", err
@@ -204,15 +213,26 @@ func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string
 
 // SaveNfo saves the NFO content to a file derived from the source path
 func (a *App) SaveNfo(sourcePath string, content string) (string, error) {
-	// Determine output path logic: usually adjacent to source, same basename
-	outputPath := sourcePath
+	// Get base name without extension
+	baseName := filepath.Base(sourcePath)
 	ext := filepath.Ext(sourcePath)
-	// If it's a known video container, strip extension to place NFO "next" to it with same name
 	lowerExt := strings.ToLower(ext)
-	if lowerExt == ".mkv" || lowerExt == ".mp4" || lowerExt == ".avi" {
-		outputPath = strings.TrimSuffix(sourcePath, ext)
+
+	// Strip extension if it's a known media file
+	if isMediaFile(lowerExt) {
+		baseName = strings.TrimSuffix(baseName, ext)
 	}
-	outputPath += ".nfo"
+
+	// Determine output directory
+	// If source is in /host (read-only), save to /torrents instead
+	var outputDir string
+	if strings.HasPrefix(sourcePath, "/host") {
+		outputDir = "/torrents"
+	} else {
+		outputDir = filepath.Dir(sourcePath)
+	}
+
+	outputPath := filepath.Join(outputDir, baseName+".nfo")
 
 	err := os.WriteFile(outputPath, []byte(content), 0644)
 	if err != nil {
