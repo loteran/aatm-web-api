@@ -11,13 +11,39 @@ import (
 	"github.com/anacrolix/torrent/metainfo"
 )
 
+// Supported media extensions
+var videoExtensions = map[string]bool{
+	".mkv": true, ".mp4": true, ".avi": true, ".wmv": true, ".m4v": true,
+}
+
+var ebookExtensions = map[string]bool{
+	".epub": true, ".pdf": true, ".mobi": true, ".azw3": true,
+	".cbz": true, ".cbr": true, ".djvu": true,
+}
+
+// isMediaFile checks if the extension is a supported media file
+func isMediaFile(ext string) bool {
+	return videoExtensions[ext] || ebookExtensions[ext]
+}
+
+// isVideoFile checks if the extension is a video file
+func isVideoFile(ext string) bool {
+	return videoExtensions[ext]
+}
+
+// isEbookFile checks if the extension is an ebook file
+func isEbookFile(ext string) bool {
+	return ebookExtensions[ext]
+}
+
 // FileInfo struct to hold file details
 type FileInfo struct {
 	Name        string `json:"name"`
 	Size        int64  `json:"size"`
 	IsDir       bool   `json:"isDir"`
 	IsProcessed bool   `json:"isProcessed"`
-	HasVideo    bool   `json:"hasVideo,omitempty"`
+	HasMedia    bool   `json:"hasMedia,omitempty"`
+	MediaType   string `json:"mediaType,omitempty"` // "video" or "ebook"
 }
 
 // App struct
@@ -50,24 +76,29 @@ func (a *App) ListDirectory(path string) ([]FileInfo, error) {
 
 		if entry.IsDir() {
 			// Show all directories to allow navigation
-			// Check if directory contains video files (directly or in subdirs)
-			hasVideo := dirContainsVideo(fullPath)
+			// Check if directory contains media files (directly or in subdirs)
+			hasMedia := dirContainsMedia(fullPath)
 			files = append(files, FileInfo{
 				Name:        entry.Name(),
 				Size:        info.Size(),
 				IsDir:       true,
 				IsProcessed: isProc,
-				HasVideo:    hasVideo,
+				HasMedia:    hasMedia,
 			})
 		} else {
 			// Check file extension
 			ext := strings.ToLower(filepath.Ext(entry.Name()))
-			if ext == ".mkv" || ext == ".mp4" {
+			if isMediaFile(ext) {
+				mediaType := "video"
+				if isEbookFile(ext) {
+					mediaType = "ebook"
+				}
 				files = append(files, FileInfo{
 					Name:        entry.Name(),
 					Size:        info.Size(),
 					IsDir:       false,
 					IsProcessed: isProc,
+					MediaType:   mediaType,
 				})
 			}
 		}
@@ -75,12 +106,12 @@ func (a *App) ListDirectory(path string) ([]FileInfo, error) {
 	return files, nil
 }
 
-// dirContainsVideo checks if a directory contains video files (recursively, max 2 levels)
-func dirContainsVideo(path string) bool {
-	return dirContainsVideoDepth(path, 0, 2)
+// dirContainsMedia checks if a directory contains media files (recursively, max 2 levels)
+func dirContainsMedia(path string) bool {
+	return dirContainsMediaDepth(path, 0, 2)
 }
 
-func dirContainsVideoDepth(path string, currentDepth, maxDepth int) bool {
+func dirContainsMediaDepth(path string, currentDepth, maxDepth int) bool {
 	if currentDepth > maxDepth {
 		return false
 	}
@@ -90,12 +121,12 @@ func dirContainsVideoDepth(path string, currentDepth, maxDepth int) bool {
 	}
 	for _, entry := range entries {
 		if entry.IsDir() {
-			if dirContainsVideoDepth(filepath.Join(path, entry.Name()), currentDepth+1, maxDepth) {
+			if dirContainsMediaDepth(filepath.Join(path, entry.Name()), currentDepth+1, maxDepth) {
 				return true
 			}
 		} else {
 			ext := strings.ToLower(filepath.Ext(entry.Name()))
-			if ext == ".mkv" || ext == ".mp4" {
+			if isMediaFile(ext) {
 				return true
 			}
 		}

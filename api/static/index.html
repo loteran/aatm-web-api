@@ -240,6 +240,10 @@
             color: var(--accent);
         }
 
+        .file-icon.ebook {
+            color: #10b981;
+        }
+
         .file-name {
             flex: 1;
             overflow: hidden;
@@ -1249,10 +1253,12 @@
                      data-name="${file.name}"
                      data-isdir="${file.isDir}"
                      onclick="selectFile('${file.name}', ${file.isDir})">
-                    <svg class="file-icon ${file.isDir ? 'folder' : 'video'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg class="file-icon ${file.isDir ? 'folder' : (file.mediaType === 'ebook' ? 'ebook' : 'video')}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         ${file.isDir
                             ? '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>'
-                            : '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>'}
+                            : (file.mediaType === 'ebook'
+                                ? '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'
+                                : '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>')}
                     </svg>
                     <span class="file-name">${file.name}</span>
                     ${file.isProcessed ? '<span class="processed-badge">Traite</span>' : ''}
