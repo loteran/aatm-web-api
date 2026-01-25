@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -137,6 +138,39 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"nfoPath": nfoPath})
 	})
 
+	// Steam API proxy (to avoid CORS issues)
+	r.Get("/api/steam/search", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("q")
+		if query == "" {
+			http.Error(w, "query parameter required", http.StatusBadRequest)
+			return
+		}
+		resp, err := http.Get("https://store.steampowered.com/api/storesearch/?term=" + query + "&l=french&cc=FR")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		io.Copy(w, resp.Body)
+	})
+
+	r.Get("/api/steam/details", func(w http.ResponseWriter, r *http.Request) {
+		appid := r.URL.Query().Get("appid")
+		if appid == "" {
+			http.Error(w, "appid parameter required", http.StatusBadRequest)
+			return
+		}
+		resp, err := http.Get("https://store.steampowered.com/api/appdetails?appids=" + appid + "&l=french")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		io.Copy(w, resp.Body)
+	})
+
 	// qBittorrent integration
 	r.Post("/api/qbittorrent/upload", func(w http.ResponseWriter, r *http.Request) {
 		var req QBittorrentRequest
@@ -166,6 +200,38 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "removed"})
+	})
+
+	// Hardlink creation
+	r.Post("/api/hardlink/create", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			SourcePath   string   `json:"sourcePath"`
+			HardlinkDirs []string `json:"hardlinkDirs"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Find the matching hardlink directory on the same device
+		destDir, err := app.FindMatchingHardlinkDir(req.SourcePath, req.HardlinkDirs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Create the hardlink
+		hardlinkPath, err := app.CreateHardlink(req.SourcePath, destDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":       "created",
+			"hardlinkPath": hardlinkPath,
+		})
 	})
 
 	// La Cale integration
@@ -240,6 +306,16 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "cleared"})
+	})
+
+	r.Get("/api/processed", func(w http.ResponseWriter, r *http.Request) {
+		files, err := app.GetAllProcessedFiles()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(files)
 	})
 
 	// File operations

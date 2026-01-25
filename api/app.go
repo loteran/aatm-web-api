@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
@@ -21,9 +22,14 @@ var ebookExtensions = map[string]bool{
 	".cbz": true, ".cbr": true, ".djvu": true,
 }
 
+var gameExtensions = map[string]bool{
+	".iso": true, ".nsp": true, ".xci": true, ".pkg": true,
+	".zip": true, ".rar": true, ".7z": true,
+}
+
 // isMediaFile checks if the extension is a supported media file
 func isMediaFile(ext string) bool {
-	return videoExtensions[ext] || ebookExtensions[ext]
+	return videoExtensions[ext] || ebookExtensions[ext] || gameExtensions[ext]
 }
 
 // isVideoFile checks if the extension is a video file
@@ -34,6 +40,11 @@ func isVideoFile(ext string) bool {
 // isEbookFile checks if the extension is an ebook file
 func isEbookFile(ext string) bool {
 	return ebookExtensions[ext]
+}
+
+// isGameFile checks if the extension is a game file
+func isGameFile(ext string) bool {
+	return gameExtensions[ext]
 }
 
 // FileInfo struct to hold file details
@@ -92,6 +103,8 @@ func (a *App) ListDirectory(path string) ([]FileInfo, error) {
 				mediaType := "video"
 				if isEbookFile(ext) {
 					mediaType = "ebook"
+				} else if isGameFile(ext) {
+					mediaType = "game"
 				}
 				files = append(files, FileInfo{
 					Name:        entry.Name(),
@@ -289,4 +302,100 @@ func formatSize(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// getDeviceID returns the device ID of the filesystem containing the path
+func getDeviceID(path string) (uint64, error) {
+	var stat syscall.Stat_t
+	err := syscall.Stat(path, &stat)
+	if err != nil {
+		return 0, err
+	}
+	return stat.Dev, nil
+}
+
+// FindMatchingHardlinkDir finds a hardlink directory on the same device as sourcePath
+func (a *App) FindMatchingHardlinkDir(sourcePath string, hardlinkDirs []string) (string, error) {
+	sourceDevID, err := getDeviceID(sourcePath)
+	if err != nil {
+		return "", fmt.Errorf("cannot get device ID for source: %w", err)
+	}
+
+	for _, dir := range hardlinkDirs {
+		if dir == "" {
+			continue
+		}
+		// Ensure the directory exists
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			continue
+		}
+		dirDevID, err := getDeviceID(dir)
+		if err != nil {
+			continue
+		}
+		if dirDevID == sourceDevID {
+			return dir, nil
+		}
+	}
+
+	return "", fmt.Errorf("no hardlink directory found on the same device as %s", sourcePath)
+}
+
+// CreateHardlink creates hardlinks for the source path in the destination directory
+func (a *App) CreateHardlink(sourcePath string, destDir string) (string, error) {
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return "", fmt.Errorf("cannot stat source: %w", err)
+	}
+
+	baseName := filepath.Base(sourcePath)
+	destPath := filepath.Join(destDir, baseName)
+
+	if sourceInfo.IsDir() {
+		// For directories, create directory structure and hardlink all files
+		err = a.hardlinkDirectory(sourcePath, destPath)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		// For single files, just create the hardlink
+		err = os.Link(sourcePath, destPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to create hardlink: %w", err)
+		}
+	}
+
+	return destPath, nil
+}
+
+// hardlinkDirectory recursively creates hardlinks for all files in a directory
+func (a *App) hardlinkDirectory(srcDir, destDir string) error {
+	// Create destination directory
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", destDir, err)
+	}
+
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory %s: %w", srcDir, err)
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(srcDir, entry.Name())
+		destPath := filepath.Join(destDir, entry.Name())
+
+		if entry.IsDir() {
+			// Recursively handle subdirectories
+			if err := a.hardlinkDirectory(srcPath, destPath); err != nil {
+				return err
+			}
+		} else {
+			// Create hardlink for files
+			if err := os.Link(srcPath, destPath); err != nil {
+				return fmt.Errorf("failed to create hardlink %s -> %s: %w", srcPath, destPath, err)
+			}
+		}
+	}
+
+	return nil
 }

@@ -14,18 +14,20 @@ var db *sql.DB
 
 // AppSettings defines the structure of the settings to be saved
 type AppSettings struct {
-	RootPath         string `json:"rootPath"`
-	TorrentTrackers  string `json:"torrentTrackers"`
-	IsPrivateTorrent bool   `json:"isPrivateTorrent"`
-	Passkey          string `json:"passkey"`
-	LaCaleEmail      string `json:"laCaleEmail"`
-	LaCalePassword   string `json:"laCalePassword"`
-	QbitUrl          string `json:"qbitUrl"`
-	QbitUsername     string `json:"qbitUsername"`
-	QbitPassword     string `json:"qbitPassword"`
-	ShowProcessed    bool   `json:"showProcessed"`
-	ShowNotProcessed bool   `json:"showNotProcessed"`
-	IsFullAuto       bool   `json:"isFullAuto"`
+	RootPath         string   `json:"rootPath"`
+	TorrentTrackers  string   `json:"torrentTrackers"`
+	IsPrivateTorrent bool     `json:"isPrivateTorrent"`
+	Passkey          string   `json:"passkey"`
+	LaCaleEmail      string   `json:"laCaleEmail"`
+	LaCalePassword   string   `json:"laCalePassword"`
+	QbitUrl          string   `json:"qbitUrl"`
+	QbitUsername     string   `json:"qbitUsername"`
+	QbitPassword     string   `json:"qbitPassword"`
+	ShowProcessed    bool     `json:"showProcessed"`
+	ShowNotProcessed bool     `json:"showNotProcessed"`
+	IsFullAuto       bool     `json:"isFullAuto"`
+	EnableHardlink   bool     `json:"enableHardlink"`
+	HardlinkDirs     []string `json:"hardlinkDirs"`
 }
 
 // InitDB initializes the SQLite database
@@ -142,4 +144,26 @@ func isProcessed(path string) bool {
 	var exists int
 	err := db.QueryRow("SELECT 1 FROM processed_files WHERE path = ?", path).Scan(&exists)
 	return err == nil
+}
+
+// GetAllProcessedFiles returns all processed files from the database
+func (a *App) GetAllProcessedFiles() ([]map[string]string, error) {
+	rows, err := db.Query("SELECT path, processed_at FROM processed_files ORDER BY processed_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []map[string]string
+	for rows.Next() {
+		var path, processedAt string
+		if err := rows.Scan(&path, &processedAt); err != nil {
+			continue
+		}
+		files = append(files, map[string]string{
+			"path":        path,
+			"processedAt": processedAt,
+		})
+	}
+	return files, nil
 }
