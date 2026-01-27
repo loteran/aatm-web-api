@@ -761,8 +761,18 @@
             const info = {};
             let cleanName = name.trim();
 
+            // Retirer l'extension vidéo pour le parsing
+            cleanName = cleanName.replace(/\.(mkv|mp4|avi|iso)$/i, '');
+
+            // Extraire le groupe de release (après le dernier tiret)
             const groupMatch = cleanName.match(/-([a-zA-Z0-9\[\]]+)$/);
-            if (groupMatch) info.releaseGroup = groupMatch[1];
+            if (groupMatch) {
+                const potentialGroup = groupMatch[1];
+                // Ne pas considérer comme groupe si c'est une résolution
+                if (!/^(2160|1080|720|576|480|4320)p$/i.test(potentialGroup)) {
+                    info.releaseGroup = potentialGroup;
+                }
+            }
 
             const patterns = {
                 year: /\b(19|20)\d{2}\b/g,
@@ -817,6 +827,189 @@
             }
 
             return info;
+        }
+
+        // ============ GÉNÉRATION DE NOM SELON LES RÈGLES LA CALE ============
+
+        function normalizeTitle(title) {
+            if (!title) return '';
+            // Supprimer les accents
+            let normalized = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            // Remplacer les cédilles
+            normalized = normalized.replace(/[çÇ]/g, m => m === 'ç' ? 'c' : 'C');
+            // Remplacer les apostrophes par un point
+            normalized = normalized.replace(/[''`]/g, '.');
+            // Supprimer les caractères spéciaux interdits
+            normalized = normalized.replace(/[,;}{[\]:]/g, '');
+            // Remplacer les tirets par des points
+            normalized = normalized.replace(/-/g, '.');
+            // Première lettre de chaque mot en majuscule
+            normalized = normalized.split(/\s+/).map(word => {
+                if (word.length === 0) return '';
+                if (word === word.toUpperCase() && word.length <= 4) return word;
+                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+            }).join('.');
+            // Nettoyer les points multiples
+            normalized = normalized.replace(/\.{2,}/g, '.').replace(/^\.|\.$/g, '');
+            return normalized;
+        }
+
+        function generateMovieReleaseName(info) {
+            const parts = [];
+
+            // 1. Titre (normalisé)
+            if (info.title) parts.push(normalizeTitle(info.title));
+
+            // 2. Année
+            if (info.year) parts.push(info.year);
+
+            // 3. Info (REPACK, PROPER, etc.)
+            if (info.info) parts.push(info.info.toUpperCase());
+
+            // 4. Edition
+            if (info.edition) parts.push(info.edition);
+
+            // 5. IMAX
+            if (info.imax) parts.push('iMAX');
+
+            // 6. Langue
+            if (info.language) {
+                const lang = info.language.toUpperCase();
+                parts.push(lang === 'MULTI' ? 'MULTi' : lang);
+            }
+
+            // 7. LangueInfo (VFF, VFQ, etc.)
+            if (info.languageInfo) parts.push(info.languageInfo.toUpperCase());
+
+            // 8. HDR/DV
+            if (info.hdr && info.hdr.length > 0) {
+                const hdrOrder = ['HDR10+', 'HDR10', 'HDR', 'DV', 'HLG', 'SDR'];
+                const sortedHdr = info.hdr
+                    .map(h => h.toUpperCase().replace('DOLBY VISION', 'DV'))
+                    .sort((a, b) => hdrOrder.indexOf(a) - hdrOrder.indexOf(b));
+                parts.push(...sortedHdr);
+            }
+
+            // 9. Résolution
+            if (info.resolution) {
+                const res = info.resolution.toLowerCase();
+                parts.push(res.endsWith('p') ? res : res + 'p');
+            }
+
+            // 10. Plateforme
+            if (info.platform) parts.push(info.platform.toUpperCase());
+
+            // 11. Source (normalisée)
+            if (info.source) {
+                let source = info.source;
+                const s = source.toLowerCase();
+                if (s === 'web-dl' || s === 'webdl') source = 'WEB-DL';
+                else if (s === 'webrip') source = 'WEBRip';
+                else if (s === 'bluray' || s === 'blu-ray' || s === 'bdrip' || s === 'brrip') source = 'BluRay';
+                else if (s === 'remux') source = 'REMUX';
+                else if (s === 'hdlight') source = 'HDLight';
+                else if (s === '4klight') source = '4KLight';
+                else if (s === 'dvdrip') source = 'DVDRip';
+                else if (s === 'hdtv') source = 'HDTV';
+                parts.push(source);
+            }
+
+            // 12. Audio (normalisé)
+            if (info.audio) {
+                let audio = info.audio.toUpperCase();
+                if (audio === 'DDP' || audio === 'E-AC-3') audio = 'EAC3';
+                if (audio === 'DD' || audio === 'AC-3') audio = 'AC3';
+                parts.push(audio);
+            }
+
+            // 13. Canaux audio
+            if (info.audioChannels) parts.push(info.audioChannels);
+
+            // 14. AudioSpec (Atmos)
+            if (info.audioSpec) parts.push(info.audioSpec);
+
+            // 15. Codec vidéo (normalisé)
+            if (info.codec) {
+                let codec = info.codec.toUpperCase();
+                if (codec === 'H264' || codec === 'H.264' || codec === 'AVC') codec = 'x264';
+                if (codec === 'H265' || codec === 'H.265' || codec === 'HEVC') codec = 'x265';
+                parts.push(codec);
+            }
+
+            // Construire le nom
+            const baseName = parts.join('.');
+            const team = info.releaseGroup || 'NoTag';
+            return `${baseName}-${team}`;
+        }
+
+        function generateSeriesReleaseName(info, mediaType) {
+            const parts = [];
+
+            // 1. Titre
+            if (info.title) parts.push(normalizeTitle(info.title));
+
+            // 2. Année (facultatif pour séries)
+            if (info.year) parts.push(info.year);
+
+            // 3. SaisonEpisode
+            if (mediaType === 'season') {
+                if (info.season) {
+                    if (info.season.toUpperCase() === 'COMPLETE' || info.season.toUpperCase() === 'INTEGRALE') {
+                        parts.push('COMPLETE');
+                    } else {
+                        parts.push(info.season.toUpperCase());
+                    }
+                }
+            } else {
+                if (info.season && info.episode) {
+                    parts.push(`${info.season.toUpperCase()}${info.episode.toUpperCase()}`);
+                } else if (info.episode) {
+                    parts.push(info.episode.toUpperCase());
+                } else if (info.season) {
+                    parts.push(info.season.toUpperCase());
+                }
+            }
+
+            // 4-15. Mêmes tags que les films
+            if (info.info) parts.push(info.info.toUpperCase());
+            if (info.edition) parts.push(info.edition);
+            if (info.imax) parts.push('iMAX');
+            if (info.language) parts.push(info.language === 'MULTI' ? 'MULTi' : info.language.toUpperCase());
+            if (info.languageInfo) parts.push(info.languageInfo.toUpperCase());
+            if (info.hdr && info.hdr.length > 0) parts.push(...info.hdr.map(h => h.toUpperCase()));
+            if (info.resolution) parts.push(info.resolution.toLowerCase().endsWith('p') ? info.resolution.toLowerCase() : info.resolution.toLowerCase() + 'p');
+            if (info.platform) parts.push(info.platform.toUpperCase());
+            if (info.source) {
+                let source = info.source.toLowerCase();
+                if (source === 'bluray' || source === 'bdrip') source = 'BluRay';
+                else if (source === 'web-dl' || source === 'webdl') source = 'WEB-DL';
+                else if (source === 'webrip') source = 'WEBRip';
+                else source = info.source;
+                parts.push(source);
+            }
+            if (info.audio) parts.push(info.audio.toUpperCase());
+            if (info.audioChannels) parts.push(info.audioChannels);
+            if (info.audioSpec) parts.push(info.audioSpec);
+            if (info.codec) {
+                let codec = info.codec.toUpperCase();
+                if (codec === 'HEVC' || codec === 'H265') codec = 'x265';
+                if (codec === 'AVC' || codec === 'H264') codec = 'x264';
+                parts.push(codec);
+            }
+
+            const baseName = parts.join('.');
+            const team = info.releaseGroup || 'NoTag';
+            return `${baseName}-${team}`;
+        }
+
+        function generateReleaseName(info, mediaType) {
+            if (mediaType === 'movie') {
+                return generateMovieReleaseName(info);
+            } else if (mediaType === 'season' || mediaType === 'episode') {
+                return generateSeriesReleaseName(info, mediaType);
+            }
+            // Pour ebook/game, garder le nom original
+            return info.title || '';
         }
 
         // ============ PRESENTATION ============
@@ -1211,7 +1404,9 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                 <div class="detail-row"><span class="detail-label">Chemin</span><span class="detail-value" style="word-break:break-all;font-size:0.85rem;">${path}</span></div>
             `;
 
-            document.getElementById('torrentName').value = name.replace(/\.[^/.]+$/, '');
+            // Générer le nom du torrent selon les règles La Cale
+            const generatedName = generateReleaseName(state.releaseInfo, state.mediaType);
+            document.getElementById('torrentName').value = generatedName || name.replace(/\.[^/.]+$/, '');
             document.getElementById('metadataQuery').value = state.releaseInfo.title || '';
 
             updateReleaseTags();
@@ -1321,6 +1516,12 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                         const name = state.selectedFile.split('/').pop();
                         state.releaseInfo = parseReleaseName(name, data.mediainfo);
                         updateReleaseTags();
+
+                        // Régénérer le nom du torrent avec les infos complètes du NFO
+                        const generatedName = generateReleaseName(state.releaseInfo, state.mediaType);
+                        if (generatedName) {
+                            document.getElementById('torrentName').value = generatedName;
+                        }
                     } catch (e) { mediaInfoEl.textContent = 'Erreur: ' + e.message; }
                 }
             } else if (step === 4) {
@@ -1566,24 +1767,41 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
 
             const trackers = document.getElementById('trackersInput').value.split('\n').filter(t => t.trim());
             const isPrivate = document.getElementById('torrentPrivate').checked;
-            state.nfoContent = document.getElementById('nfoContent').value;
+            const torrentName = document.getElementById('torrentName').value;
+            let nfoContent = document.getElementById('nfoContent').value;
+
+            // Remplacer le "Complete name" dans le NFO par le nom généré
+            if (torrentName && nfoContent) {
+                // Extraire l'extension du fichier original
+                const originalName = state.selectedFile.split('/').pop();
+                const ext = originalName.match(/\.[^/.]+$/)?.[0] || '';
+                const newCompleteName = torrentName + ext;
+                // Remplacer la ligne "Complete name"
+                nfoContent = nfoContent.replace(
+                    /^(Complete name\s*:\s*).*$/m,
+                    `$1${newCompleteName}`
+                );
+                // Mettre à jour l'affichage
+                document.getElementById('nfoContent').value = nfoContent;
+            }
+            state.nfoContent = nfoContent;
 
             try {
-                // Save NFO
+                // Save NFO with updated name
                 const nfoRes = await fetch(`${API_BASE}/api/nfo/save`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sourcePath: state.selectedFile, content: state.nfoContent })
+                    body: JSON.stringify({ sourcePath: state.selectedFile, content: state.nfoContent, torrentName })
                 });
                 if (!nfoRes.ok) throw new Error('Erreur sauvegarde NFO');
                 const nfoData = await nfoRes.json();
                 state.createdNfoPath = nfoData.nfoPath;
 
-                // Create torrent
+                // Create torrent with the generated name
                 const torrentRes = await fetch(`${API_BASE}/api/torrent/create`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sourcePath: state.selectedFile, trackers, comment: 'AATM', isPrivate })
+                    body: JSON.stringify({ sourcePath: state.selectedFile, trackers, comment: 'AATM', isPrivate, torrentName })
                 });
                 if (!torrentRes.ok) throw new Error('Erreur creation torrent');
                 const torrentData = await torrentRes.json();

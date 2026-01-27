@@ -113,7 +113,7 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		torrentPath, err := app.CreateTorrent(req.SourcePath, req.Trackers, req.Comment, req.IsPrivate)
+		torrentPath, err := app.CreateTorrent(req.SourcePath, req.Trackers, req.Comment, req.IsPrivate, req.TorrentName)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -129,7 +129,7 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		nfoPath, err := app.SaveNfo(req.SourcePath, req.Content)
+		nfoPath, err := app.SaveNfo(req.SourcePath, req.Content, req.TorrentName)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -382,15 +382,17 @@ func main() {
 
 // Request types
 type CreateTorrentRequest struct {
-	SourcePath string   `json:"sourcePath"`
-	Trackers   []string `json:"trackers"`
-	Comment    string   `json:"comment"`
-	IsPrivate  bool     `json:"isPrivate"`
+	SourcePath  string   `json:"sourcePath"`
+	Trackers    []string `json:"trackers"`
+	Comment     string   `json:"comment"`
+	IsPrivate   bool     `json:"isPrivate"`
+	TorrentName string   `json:"torrentName"`
 }
 
 type SaveNfoRequest struct {
-	SourcePath string `json:"sourcePath"`
-	Content    string `json:"content"`
+	SourcePath  string `json:"sourcePath"`
+	Content     string `json:"content"`
+	TorrentName string `json:"torrentName"`
 }
 
 type QBittorrentRequest struct {

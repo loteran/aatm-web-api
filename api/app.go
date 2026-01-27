@@ -175,7 +175,8 @@ func (a *App) GetMediaInfo(filePath string) (string, error) {
 }
 
 // CreateTorrent creates a .torrent file for the given source path
-func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string, isPrivate bool) (string, error) {
+// torrentName is the name that will appear in the torrent (the release name)
+func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string, isPrivate bool, torrentName string) (string, error) {
 	info := metainfo.Info{
 		PieceLength: 256 * 1024,
 	}
@@ -188,6 +189,11 @@ func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string
 	err := info.BuildFromFilePath(sourcePath)
 	if err != nil {
 		return "", err
+	}
+
+	// Utiliser le nom personnalisé si fourni, sinon garder le nom du fichier source
+	if torrentName != "" {
+		info.Name = torrentName
 	}
 
 	mi := metainfo.MetaInfo{
@@ -213,12 +219,18 @@ func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string
 
 	// Determine output path
 	// If source is in /host (read-only), save torrent to /torrents instead
-	baseName := filepath.Base(sourcePath)
+	// Use the torrent name for the output file if provided
+	var baseName string
+	if torrentName != "" {
+		baseName = torrentName
+	} else {
+		baseName = filepath.Base(sourcePath)
+	}
 	var outputPath string
 	if strings.HasPrefix(sourcePath, "/host") {
 		outputPath = filepath.Join("/torrents", baseName+".torrent")
 	} else {
-		outputPath = sourcePath + ".torrent"
+		outputPath = filepath.Join(filepath.Dir(sourcePath), baseName+".torrent")
 	}
 
 	outFile, err := os.Create(outputPath)
@@ -235,16 +247,22 @@ func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string
 	return outputPath, nil
 }
 
-// SaveNfo saves the NFO content to a file derived from the source path
-func (a *App) SaveNfo(sourcePath string, content string) (string, error) {
-	// Get base name without extension
-	baseName := filepath.Base(sourcePath)
-	ext := filepath.Ext(sourcePath)
-	lowerExt := strings.ToLower(ext)
+// SaveNfo saves the NFO content to a file
+// If torrentName is provided, it will be used as the filename
+func (a *App) SaveNfo(sourcePath string, content string, torrentName string) (string, error) {
+	// Determine base name: use torrentName if provided, otherwise derive from source
+	var baseName string
+	if torrentName != "" {
+		baseName = torrentName
+	} else {
+		baseName = filepath.Base(sourcePath)
+		ext := filepath.Ext(sourcePath)
+		lowerExt := strings.ToLower(ext)
 
-	// Strip extension if it's a known media file
-	if isMediaFile(lowerExt) {
-		baseName = strings.TrimSuffix(baseName, ext)
+		// Strip extension if it's a known media file
+		if isMediaFile(lowerExt) {
+			baseName = strings.TrimSuffix(baseName, ext)
+		}
 	}
 
 	// Determine output directory
