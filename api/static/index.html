@@ -386,6 +386,10 @@
                                     <input type="checkbox" id="torrentPrivate" checked>
                                     <label for="torrentPrivate">Torrent prive</label>
                                 </div>
+                                <div class="form-check" style="margin-top: 0.5rem;">
+                                    <input type="checkbox" id="renameFile" checked>
+                                    <label for="renameFile">Renommer le fichier (MKV et hardlink)</label>
+                                </div>
                             </div>
                             <div id="creationProgress" class="hidden"><div class="loading"><div class="spinner"></div>Creation en cours...</div></div>
                             <div id="creationResult" class="hidden"></div>
@@ -1769,14 +1773,16 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
             const trackers = document.getElementById('trackersInput').value.split('\n').filter(t => t.trim());
             const isPrivate = document.getElementById('torrentPrivate').checked;
             const torrentName = document.getElementById('torrentName').value;
+            const renameFile = document.getElementById('renameFile').checked;
             let nfoContent = document.getElementById('nfoContent').value;
 
-            // Remplacer le "Complete name" dans le NFO par le nom généré
-            if (torrentName && nfoContent) {
-                // Extraire l'extension du fichier original
-                const originalName = state.selectedFile.split('/').pop();
-                const ext = originalName.match(/\.[^/.]+$/)?.[0] || '';
-                const newCompleteName = torrentName + ext;
+            // Extraire l'extension et le nom original
+            const originalName = state.selectedFile.split('/').pop();
+            const ext = originalName.match(/\.[^/.]+$/)?.[0] || '';
+            const newCompleteName = torrentName + ext;
+
+            // Remplacer le "Complete name" dans le NFO par le nom généré (seulement si renameFile est coché)
+            if (torrentName && nfoContent && renameFile) {
                 // Remplacer la ligne "Complete name"
                 nfoContent = nfoContent.replace(
                     /^(Complete name\s*:\s*).*$/m,
@@ -1813,13 +1819,18 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                 let hardlinkError = null;
                 if (state.settings.enableHardlink && state.settings.hardlinkDirs && state.settings.hardlinkDirs.length > 0) {
                     try {
+                        const hardlinkReqBody = {
+                            sourcePath: state.selectedFile,
+                            hardlinkDirs: state.settings.hardlinkDirs
+                        };
+                        // Si renameFile est coché, passer le nouveau nom pour le hardlink
+                        if (renameFile && torrentName) {
+                            hardlinkReqBody.destName = newCompleteName;
+                        }
                         const hardlinkRes = await fetch(`${API_BASE}/api/hardlink/create`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                sourcePath: state.selectedFile,
-                                hardlinkDirs: state.settings.hardlinkDirs
-                            })
+                            body: JSON.stringify(hardlinkReqBody)
                         });
                         if (hardlinkRes.ok) {
                             const hardlinkData = await hardlinkRes.json();

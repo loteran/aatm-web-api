@@ -360,13 +360,18 @@ func (a *App) FindMatchingHardlinkDir(sourcePath string, hardlinkDirs []string) 
 }
 
 // CreateHardlink creates hardlinks for the source path in the destination directory
-func (a *App) CreateHardlink(sourcePath string, destDir string) (string, error) {
+// destName is optional: if provided, the hardlink will use this name instead of the original
+func (a *App) CreateHardlink(sourcePath string, destDir string, destName string) (string, error) {
 	sourceInfo, err := os.Stat(sourcePath)
 	if err != nil {
 		return "", fmt.Errorf("cannot stat source: %w", err)
 	}
 
+	// Use custom destName if provided, otherwise use original basename
 	baseName := filepath.Base(sourcePath)
+	if destName != "" {
+		baseName = destName
+	}
 	destPath := filepath.Join(destDir, baseName)
 
 	if sourceInfo.IsDir() {
