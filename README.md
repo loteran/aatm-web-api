@@ -46,6 +46,33 @@ Il permet de naviguer dans vos fichiers, générer des torrents et NFO, et uploa
 
 ---
 
+## 🔗 Hardlinks - Configuration importante
+
+Pour créer des **hardlinks** (liens physiques) vers vos fichiers, le conteneur a besoin d'un accès en **écriture** aux répertoires concernés.
+
+Par défaut, le système de fichiers est monté en **lecture seule** (`/:/host:ro`) pour la sécurité. Vous devez donc monter explicitement les répertoires où vous souhaitez créer des hardlinks.
+
+### Répertoires courants
+
+Les répertoires suivants sont généralement utilisés pour les médias :
+- `/mnt` - Disques montés
+- `/media` - Médias
+- `/home` - Dossiers utilisateurs
+
+### Ajouter vos propres répertoires
+
+Si vos médias ou répertoires de hardlinks sont ailleurs (ex: `/data`, `/srv`), ajoutez une ligne dans les volumes :
+
+```yaml
+volumes:
+  - /data:/host/data
+  - /srv:/host/srv
+```
+
+> ⚠️ **Note** : Les hardlinks ne fonctionnent qu'entre fichiers sur le **même système de fichiers** (même partition/disque).
+
+---
+
 ## 🚀 Exemple docker-compose
 
 ```yaml
@@ -64,9 +91,16 @@ services:
     volumes:
       - ./data:/data
       - ./qbt-config:/config/qBittorrent
-      - /:/host:ro
-      - /your/media/path:/media
       - ./torrents:/torrents
+      # Lecture seule pour la navigation
+      - /:/host:ro
+      # Écriture pour hardlinks/torrents/nfo (ajoutez vos répertoires ici)
+      - /mnt:/host/mnt
+      - /media:/host/media
+      - /home:/host/home
+      # Exemple: si vos médias sont dans /data ou /srv
+      # - /data:/host/data
+      # - /srv:/host/srv
 ```
 
 ---

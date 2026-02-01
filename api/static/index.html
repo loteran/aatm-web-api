@@ -373,6 +373,11 @@
                         <!-- Step 4: Torrent Config -->
                         <div class="workflow-content hidden" id="step-4">
                             <h3 class="workflow-title">Configuration du torrent</h3>
+                            <div class="detail-section" style="margin-bottom: 1rem;">
+                                <h4>Fichier</h4>
+                                <div class="detail-row"><span class="detail-label">Nom actuel</span><span class="detail-value" id="currentFileName" style="word-break: break-all;">-</span></div>
+                                <div class="detail-row" id="futureFileNameRow"><span class="detail-label">Nouveau nom</span><span class="detail-value" id="futureFileName" style="word-break: break-all; color: var(--accent);">-</span></div>
+                            </div>
                             <div class="form-group">
                                 <label>Nom du torrent</label>
                                 <input type="text" class="form-control" id="torrentName" placeholder="Nom du fichier torrent">
@@ -1233,7 +1238,14 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
 
         function initNavigation() {
             document.querySelectorAll('.nav-item').forEach(item => {
-                item.addEventListener('click', () => navigateTo(item.dataset.page));
+                item.addEventListener('click', () => {
+                    // Si on clique sur "Créer Torrent" dans le menu, recharger la page
+                    if (item.dataset.page === 'create') {
+                        location.reload();
+                        return;
+                    }
+                    navigateTo(item.dataset.page);
+                });
             });
         }
 
@@ -1533,6 +1545,11 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                 if (state.settings.torrentTrackers) document.getElementById('trackersInput').value = state.settings.torrentTrackers;
                 document.getElementById('creationProgress').classList.add('hidden');
                 document.getElementById('creationResult').classList.add('hidden');
+                // Afficher le nom actuel du fichier
+                const originalName = state.selectedFile ? state.selectedFile.split('/').pop() : '-';
+                document.getElementById('currentFileName').textContent = originalName;
+                // Mettre à jour l'affichage du futur nom
+                updateFutureFileName();
             } else if (step === 5) {
                 document.getElementById('createdTorrentPath').textContent = state.createdTorrentPath || '-';
                 document.getElementById('createdNfoPath').textContent = state.createdNfoPath || '-';
@@ -1860,7 +1877,7 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                 else if (state.settings.enableHardlink) successMsg += `<br><small style="color: var(--warning-text);">Hardlink: aucun répertoire configuré sur le même disque</small>`;
                 document.getElementById('creationResult').innerHTML = `<div class="alert alert-success">${successMsg}</div>`;
                 showToast('Torrent cree!', 'success');
-                setTimeout(() => goToStep(5), 1000);
+                setTimeout(() => goToStep(5), 20000);
             } catch (e) {
                 document.getElementById('creationProgress').classList.add('hidden');
                 document.getElementById('creationResult').classList.remove('hidden');
@@ -2113,6 +2130,26 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
             div.textContent = text;
             return div.innerHTML;
         }
+
+        function updateFutureFileName() {
+            const renameCheckbox = document.getElementById('renameFile');
+            const torrentName = document.getElementById('torrentName').value;
+            const futureRow = document.getElementById('futureFileNameRow');
+            const futureNameEl = document.getElementById('futureFileName');
+
+            if (renameCheckbox && renameCheckbox.checked && torrentName) {
+                const originalName = state.selectedFile ? state.selectedFile.split('/').pop() : '';
+                const ext = originalName.match(/\.[^/.]+$/)?.[0] || '';
+                futureNameEl.textContent = torrentName + ext;
+                futureRow.style.display = '';
+            } else {
+                futureRow.style.display = 'none';
+            }
+        }
+
+        // Event listeners pour mise à jour du futur nom de fichier
+        document.getElementById('renameFile')?.addEventListener('change', updateFutureFileName);
+        document.getElementById('torrentName')?.addEventListener('input', updateFutureFileName);
 
         function showToast(message, type = 'success') {
             const container = document.getElementById('toastContainer');

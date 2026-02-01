@@ -16,10 +16,28 @@ services:
       - ./data:/data
       # qBittorrent config persistence
       - ./qbt-config:/config/qBittorrent
-      # Full filesystem access for navigation
+      # Full filesystem access for navigation (read-only)
       - /:/host:ro
-      # Media directory with write access for torrents/nfo
-      - ${MEDIA_PATH:-/}:/media
+      # ============================================================
+      # IMPORTANT: Hardlinks & Write Access
+      # ============================================================
+      # Les répertoires ci-dessous sont montés en ÉCRITURE pour permettre:
+      #   - La création de hardlinks
+      #   - La sauvegarde des fichiers .torrent et .nfo
+      #
+      # Par défaut: /mnt, /media, /home sont activés.
+      #
+      # Si vos médias ou répertoires de hardlinks sont ailleurs,
+      # ajoutez une ligne similaire:
+      #   - /votre/chemin:/host/votre/chemin
+      #
+      # Exemple pour /data ou /srv:
+      #   - /data:/host/data
+      #   - /srv:/host/srv
+      # ============================================================
+      - /mnt:/host/mnt
+      - /media:/host/media
+      - /home:/host/home
       # Output torrents directory
       - ./torrents:/torrents
     environment:
