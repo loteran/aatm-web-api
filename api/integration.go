@@ -39,28 +39,58 @@ type ReleaseInfo struct {
 	Genres            []string `json:"genres"`
 }
 
-// Local Tags Structure (from tags.json)
-type LocalMetaRoot struct {
-	Categories []LocalCategory `json:"quaiprincipalcategories"`
+// Meta API response structs (from /api/external/meta)
+type MetaResponse struct {
+	Categories    []MetaCategory `json:"categories"`
+	TagGroups     []MetaTagGroup `json:"tagGroups"`
+	UngroupedTags []MetaTag      `json:"ungroupedTags"`
 }
 
-type LocalCategory struct {
-	Name            string                `json:"name"`
-	Slug            string                `json:"slug"`
-	ID              string                `json:"id"`
-	SubCategories   []LocalCategory       `json:"emplacementsouscategorie"`
-	Characteristics []LocalCharacteristic `json:"caracteristiques"`
+type MetaCategory struct {
+	ID       string         `json:"id"`
+	Name     string         `json:"name"`
+	Slug     string         `json:"slug"`
+	Children []MetaCategory `json:"children"`
 }
 
-type LocalCharacteristic struct {
-	Name string     `json:"name"`
-	Slug string     `json:"slug"`
-	Tags []LocalTag `json:"tags"`
+type MetaTagGroup struct {
+	ID   string    `json:"id"`
+	Name string    `json:"name"`
+	Slug string    `json:"slug"`
+	Tags []MetaTag `json:"tags"`
 }
 
-type LocalTag struct {
-	Name string `json:"name"`
+type MetaTag struct {
 	ID   string `json:"id"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// fetchLaCaleMetadata fetches categories and tags from the La-Cale API
+func fetchLaCaleMetadata(apiKey string) (*MetaResponse, error) {
+	req, err := http.NewRequest("GET", "https://la-cale.space/api/external/meta", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create meta request: %w", err)
+	}
+	req.Header.Set("X-Api-Key", apiKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch meta: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("meta API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var meta MetaResponse
+	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+		return nil, fmt.Errorf("failed to decode meta response: %w", err)
+	}
+	return &meta, nil
 }
 
 // RemoveFromQBittorrent removes the torrent from qBittorrent without deleting files
@@ -207,20 +237,20 @@ func (a *App) UploadToLaCale(torrentPath string, nfoPath string, title string, d
 		return fmt.Errorf("La-Cale API key is missing in settings")
 	}
 
-	// 1. Fetch Metadata (Load from embedded tagsData)
-	var meta LocalMetaRoot
-	if err := json.Unmarshal([]byte(tagsData), &meta); err != nil {
-		return fmt.Errorf("failed to parse embedded tags data: %w", err)
+	// 1. Fetch Metadata from La-Cale API
+	meta, err := fetchLaCaleMetadata(apiKey)
+	if err != nil {
+		return fmt.Errorf("failed to fetch La-Cale metadata: %w", err)
 	}
 
 	// 2. Identify Category
-	categoryId, relevantChars := findLocalCategory(meta.Categories, mediaType)
+	categoryId := findCategory(meta.Categories, mediaType)
 	if categoryId == "" {
 		return fmt.Errorf("could not find a matching category for type: %s", mediaType)
 	}
 
 	// 3. Identify Tags
-	matchedTags := findLocalMatchingTags(relevantChars, releaseInfo)
+	matchedTags := findMatchingTags(meta.TagGroups, releaseInfo)
 
 	// 4. Upload (External API with API Key)
 	client := &http.Client{}
@@ -301,11 +331,11 @@ func (a *App) UploadToLaCale(torrentPath string, nfoPath string, title string, d
 	}
 	defer uploadResp.Body.Close()
 
-	if uploadResp.StatusCode != 200 {
-		respBody, err := io.ReadAll(uploadResp.Body)
-		if err != nil {
-			return fmt.Errorf("API Error (Status %d) - Failed to read body: %v", uploadResp.StatusCode, err)
-		}
+	respBody, _ := io.ReadAll(uploadResp.Body)
+	fmt.Printf("La-Cale response (Status %d): %s\n", uploadResp.StatusCode, string(respBody))
+	fmt.Printf("La-Cale response headers: %v\n", uploadResp.Header)
+
+	if uploadResp.StatusCode < 200 || uploadResp.StatusCode >= 300 {
 		return fmt.Errorf("API Error (Status %d) | Response: %s", uploadResp.StatusCode, string(respBody))
 	}
 
@@ -322,16 +352,8 @@ func min(a, b int) int {
 	return b
 }
 
-func findLocalCategory(categories []LocalCategory, mediaType string) (string, []LocalCharacteristic) {
-	// Recursive search for keywords
-	// mediaType: "movie", "episode", "season", "ebook" -> "films", "series", "e-books"
-
+func findCategory(categories []MetaCategory, mediaType string) string {
 	keywords := []string{}
-	// Map mediaType to potential slugs in tags.json
-	// Movie -> Video -> Films
-	// Episode/Season -> Video -> Séries TV
-	// Ebook -> E-books
-
 	switch mediaType {
 	case "movie":
 		keywords = []string{"films", "film"}
@@ -339,65 +361,56 @@ func findLocalCategory(categories []LocalCategory, mediaType string) (string, []
 		keywords = []string{"e-books", "ebooks", "ebook", "e-book"}
 	case "game":
 		keywords = []string{"jeux", "jeu", "games", "game", "pc"}
-	default:
+	default: // episode, season
 		keywords = []string{"series", "séries", "serie"}
 	}
 
-	for _, cat := range categories {
-		// Verify if we are in "Vidéo" branch for movies/series
-		// If root category is "Vidéo", search children
-
-		// Recursion in children
-		if len(cat.SubCategories) > 0 {
-			if id, chars := findLocalCategory(cat.SubCategories, mediaType); id != "" {
-				// If found in children, merge characteristics?
-				// Usually characteristics are at leaf or inherited.
-				// The JSON shows characteristics at leaf level mostly (e.g. Films has Genres, Codec...)
-				// But root "Vidéo" might provide shared ones? JSON says "Vidéo" has emplacementsouscategorie but no direct caracteristiques listed in valid json provided in prompt for Video root, wait,
-				// "Vidéo" has "emplacementsouscategorie".
-				return id, chars
-			}
-		}
-
-		// Check self path
-		lowerSlug := strings.ToLower(cat.Slug)
-		for _, kw := range keywords {
-			if strings.Contains(lowerSlug, kw) {
-				if cat.ID != "" {
-					return cat.ID, cat.Characteristics
+	var search func(cats []MetaCategory) string
+	search = func(cats []MetaCategory) string {
+		for _, cat := range cats {
+			lowerSlug := strings.ToLower(cat.Slug)
+			for _, kw := range keywords {
+				if strings.Contains(lowerSlug, kw) && cat.ID != "" {
+					return cat.ID
 				}
-				// If ID is missing but slug matches, maybe we are at correct category but ID logic failed?
-				// But we expect ID.
-				// For now return Slug and let uploader fail (or we fix logic)
-				// Actually, we want ID. If new JSON has ID, we should use it.
-				// Fallback to Slug just in case
-				// return cat.Slug, cat.Characteristics
-				// The previous code returned Slug.
-				// Now we return ID if possible.
+			}
+			if len(cat.Children) > 0 {
+				if id := search(cat.Children); id != "" {
+					return id
+				}
 			}
 		}
+		return ""
 	}
-	return "", nil
+	return search(categories)
 }
 
-func findLocalMatchingTags(characteristics []LocalCharacteristic, info ReleaseInfo) []string {
+func findMatchingTags(tagGroups []MetaTagGroup, info ReleaseInfo) []string {
 	matched := []string{}
 	unique := make(map[string]bool)
 
-	addTag := func(t LocalTag) {
+	addTag := func(t MetaTag) {
 		if !unique[t.ID] && t.ID != "" {
 			unique[t.ID] = true
 			matched = append(matched, t.ID)
 		}
 	}
 
-	for _, char := range characteristics {
-		slug := strings.ToLower(char.Slug)
-		tagsFoundForChar := false
+	normalize := func(s string) string {
+		s = strings.ToLower(s)
+		s = strings.ReplaceAll(s, "-", "")
+		s = strings.ReplaceAll(s, " ", "")
+		s = strings.ReplaceAll(s, "é", "e")
+		s = strings.ReplaceAll(s, "è", "e")
+		return s
+	}
+
+	for _, group := range tagGroups {
+		slug := strings.ToLower(group.Slug)
+		tagsFoundForGroup := false
 
 		var valuesToCheck []string
 
-		// Map characteristic to info field based on slug
 		switch {
 		case strings.Contains(slug, "genre"):
 			valuesToCheck = info.Genres
@@ -405,18 +418,17 @@ func findLocalMatchingTags(characteristics []LocalCharacteristic, info ReleaseIn
 			valuesToCheck = []string{info.Resolution}
 		case strings.Contains(slug, "codec-vid") || strings.Contains(slug, "codec-video"):
 			valuesToCheck = []string{info.Codec}
-			// Fallback: If codec is "x264", maybe tag "AVC/H264/x264" matches
 		case strings.Contains(slug, "codec-audio"):
 			valuesToCheck = info.AudioCodecs
 			if len(valuesToCheck) == 0 && info.Audio != "" {
 				valuesToCheck = []string{info.Audio}
 			}
-		case strings.Contains(slug, "langues") || strings.Contains(slug, "langue"):
+		case strings.Contains(slug, "langue"):
 			valuesToCheck = info.AudioLanguages
 			if len(valuesToCheck) == 0 && info.Language != "" {
 				valuesToCheck = []string{info.Language}
 			}
-		case strings.Contains(slug, "sous-titres"):
+		case strings.Contains(slug, "sous-titre"):
 			valuesToCheck = info.SubtitleLanguages
 		case strings.Contains(slug, "extension") || strings.Contains(slug, "format"):
 			valuesToCheck = []string{info.Container}
@@ -425,19 +437,18 @@ func findLocalMatchingTags(characteristics []LocalCharacteristic, info ReleaseIn
 		case strings.Contains(slug, "caract") || strings.Contains(slug, "hdr"):
 			valuesToCheck = info.Hdr
 			valuesToCheck = append(valuesToCheck, info.Tags...)
+		default:
+			continue
 		}
 
-		// Filter empty
+		// Filter empty and build valid values with genre translations
 		validValues := []string{}
-
-		// If dealing with Genres, try to map English -> French common TMDB values
 		isGenre := strings.Contains(slug, "genre")
 
 		for _, v := range valuesToCheck {
 			if v != "" {
 				validValues = append(validValues, strings.ToLower(v))
 				if isGenre {
-					// Add translated fallback for common English terms
 					lowerV := strings.ToLower(v)
 					switch lowerV {
 					case "adventure":
@@ -447,7 +458,7 @@ func findLocalMatchingTags(characteristics []LocalCharacteristic, info ReleaseIn
 					case "science fiction", "sci-fi":
 						validValues = append(validValues, "science-fiction")
 					case "mystery":
-						validValues = append(validValues, "mystere") // Normalized usually handles accent, but spelling differs
+						validValues = append(validValues, "mystere")
 					case "war":
 						validValues = append(validValues, "guerre")
 					case "family":
@@ -465,48 +476,27 @@ func findLocalMatchingTags(characteristics []LocalCharacteristic, info ReleaseIn
 			}
 		}
 
-		// If no values to check for this characteristic, we might want to skip "Autre" logic?
-		// Actually, if we have no info about Audio Codec, should we set "Autre"?
-		// Probably not, "Autre" usually implies "I have a value but it's not in the list".
-		// But user said: "if the audio codec is not found in the tags ... there should be a "Autre" tag".
-		// If Info.Audio is empty, then "not found" fits? Or does it mean "Detected but not matched"?
-		// I assume if we detected something. If we didn't detect Audio Codec, we shouldn't tag it.
 		if len(validValues) == 0 {
 			continue
 		}
 
-		for _, tag := range char.Tags {
+		for _, tag := range group.Tags {
 			isMatch := false
-
-			// Normalize for comparison: remove hyphens, spaces, accents
-			normalize := func(s string) string {
-				s = strings.ToLower(s)
-				s = strings.ReplaceAll(s, "-", "")
-				s = strings.ReplaceAll(s, " ", "")
-				// Simple accent removal if needed (can be expanded)
-				s = strings.ReplaceAll(s, "é", "e")
-				s = strings.ReplaceAll(s, "è", "e")
-				return s
-			}
-
 			normTag := normalize(tag.Name)
+			// Also normalize the tag slug for matching
+			normSlug := normalize(tag.Slug)
 
 			for _, val := range validValues {
 				normVal := normalize(val)
 
-				// Fuzzy match logic
-				if normTag == normVal {
+				if normTag == normVal || normSlug == normVal {
 					isMatch = true
-				} else if strings.Contains(normTag, normVal) {
+				} else if strings.Contains(normTag, normVal) || strings.Contains(normSlug, normVal) {
 					isMatch = true
 				} else if strings.Contains(normVal, normTag) {
 					isMatch = true
-				} else {
-					// Direct check without normalization for some cases?
-					// Retain original check just in case
-					if strings.Contains(strings.ToLower(tag.Name), strings.ToLower(val)) {
-						isMatch = true
-					}
+				} else if strings.Contains(strings.ToLower(tag.Name), strings.ToLower(val)) {
+					isMatch = true
 				}
 
 				if isMatch {
@@ -516,13 +506,13 @@ func findLocalMatchingTags(characteristics []LocalCharacteristic, info ReleaseIn
 
 			if isMatch {
 				addTag(tag)
-				tagsFoundForChar = true
+				tagsFoundForGroup = true
 			}
 		}
 
 		// Fallback "Autre"
-		if !tagsFoundForChar {
-			for _, tag := range char.Tags {
+		if !tagsFoundForGroup {
+			for _, tag := range group.Tags {
 				if strings.EqualFold(tag.Name, "Autre") || strings.EqualFold(tag.Name, "Autres") || strings.HasPrefix(strings.ToLower(tag.Name), "autre") {
 					addTag(tag)
 					break
