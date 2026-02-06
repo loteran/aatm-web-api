@@ -17,9 +17,8 @@ type AppSettings struct {
 	RootPath         string   `json:"rootPath"`
 	TorrentTrackers  string   `json:"torrentTrackers"`
 	IsPrivateTorrent bool     `json:"isPrivateTorrent"`
-	Passkey          string   `json:"passkey"`
-	LaCaleEmail      string   `json:"laCaleEmail"`
-	LaCalePassword   string   `json:"laCalePassword"`
+	Passkey      string `json:"passkey"`
+	LaCaleApiKey string `json:"laCaleApiKey"`
 	// Torrent client selection: "qbittorrent", "transmission", "deluge", "none"
 	TorrentClient string `json:"torrentClient"`
 	// qBittorrent settings

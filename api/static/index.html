@@ -472,9 +472,8 @@
                         </div>
                         <div class="settings-section">
                             <h3>La-Cale</h3>
-                            <div class="form-group"><label>Email</label><input type="email" class="form-control" id="settingLaCaleEmail"></div>
-                            <div class="form-group"><label>Mot de passe</label><input type="password" class="form-control" id="settingLaCalePassword"></div>
                             <div class="form-group"><label>Passkey</label><input type="text" class="form-control" id="settingLaCalePasskey"></div>
+                            <div class="form-group"><label>Cle API</label><input type="text" class="form-control" id="settingLaCaleApiKey"></div>
                         </div>
                         <div class="settings-section">
                             <h3>Hardlinks</h3>
@@ -1877,7 +1876,7 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                 else if (state.settings.enableHardlink) successMsg += `<br><small style="color: var(--warning-text);">Hardlink: aucun répertoire configuré sur le même disque</small>`;
                 document.getElementById('creationResult').innerHTML = `<div class="alert alert-success">${successMsg}</div>`;
                 showToast('Torrent cree!', 'success');
-                setTimeout(() => goToStep(5), 20000);
+                setTimeout(() => goToStep(5), 5000);
             } catch (e) {
                 document.getElementById('creationProgress').classList.add('hidden');
                 document.getElementById('creationResult').classList.remove('hidden');
@@ -1963,8 +1962,7 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                         mediaType: state.mediaType,
                         releaseInfo: state.releaseInfo,
                         passkey: state.settings.passkey,
-                        email: state.settings.laCaleEmail,
-                        password: state.settings.laCalePassword
+                        apiKey: state.settings.laCaleApiKey
                     })
                 });
 
@@ -2038,9 +2036,8 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
             document.getElementById('settingDelugeUrl').value = state.settings.delugeUrl || 'http://localhost:8112';
             document.getElementById('settingDelugePassword').value = state.settings.delugePassword || 'deluge';
             // La-Cale
-            document.getElementById('settingLaCaleEmail').value = state.settings.laCaleEmail || '';
-            document.getElementById('settingLaCalePassword').value = state.settings.laCalePassword || '';
             document.getElementById('settingLaCalePasskey').value = state.settings.passkey || '';
+            document.getElementById('settingLaCaleApiKey').value = state.settings.laCaleApiKey || '';
             document.getElementById('settingEnableHardlink').checked = state.settings.enableHardlink || false;
             document.getElementById('settingHardlinkDirs').value = (state.settings.hardlinkDirs || []).join('\n');
             document.getElementById('settingShowProcessed').checked = state.settings.showProcessed || false;
@@ -2076,9 +2073,8 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                 delugeUrl: document.getElementById('settingDelugeUrl').value,
                 delugePassword: document.getElementById('settingDelugePassword').value,
                 // La-Cale
-                laCaleEmail: document.getElementById('settingLaCaleEmail').value,
-                laCalePassword: document.getElementById('settingLaCalePassword').value,
                 passkey: document.getElementById('settingLaCalePasskey').value,
+                laCaleApiKey: document.getElementById('settingLaCaleApiKey').value,
                 enableHardlink: document.getElementById('settingEnableHardlink').checked,
                 hardlinkDirs: hardlinkDirs,
                 showProcessed: document.getElementById('settingShowProcessed').checked

@@ -288,8 +288,7 @@ func main() {
 			req.MediaType,
 			req.ReleaseInfo,
 			req.Passkey,
-			req.Email,
-			req.Password,
+			req.ApiKey,
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -412,6 +411,5 @@ type LaCaleUploadRequest struct {
 	MediaType   string      `json:"mediaType"`
 	ReleaseInfo ReleaseInfo `json:"releaseInfo"`
 	Passkey     string      `json:"passkey"`
-	Email       string      `json:"email"`
-	Password    string      `json:"password"`
+	ApiKey      string      `json:"apiKey"`
 }

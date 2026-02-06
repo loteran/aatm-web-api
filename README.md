@@ -105,14 +105,27 @@ services:
 
 ---
 
+## 🔑 Clé API La-Cale
+
+Pour pouvoir uploader vos torrents sur **La-Cale**, vous devez générer une clé API depuis votre compte :
+
+1. Rendez-vous sur **https://la-cale.space/settings/api-keys**
+2. Générez une nouvelle clé API
+3. Copiez la clé et renseignez-la dans **Paramètres > La-Cale > Clé API** de l'interface AATM
+
+> ⚠️ **Sans cette clé API, l'upload vers La-Cale ne fonctionnera pas.**
+
+---
+
 ## 🖥️ Utilisation
 
 1. Lancez le conteneur
 2. Accédez à `http://votre-ip:8085`
-3. Naviguez dans `/host` pour trouver vos fichiers
-4. Sélectionnez un fichier vidéo
-5. Suivez le workflow de création de torrent
-6. Upload automatique vers qBittorrent
+3. Configurez votre clé API La-Cale dans les paramètres (voir section ci-dessus)
+4. Naviguez dans `/host` pour trouver vos fichiers
+5. Sélectionnez un fichier vidéo
+6. Suivez le workflow de création de torrent
+7. Upload automatique vers qBittorrent et/ou La-Cale
 
 ---
 

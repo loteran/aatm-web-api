@@ -46,10 +46,21 @@ services:
       - QBT_WEBUI_PORT=8081
       - TZ=${TZ:-Europe/Paris}
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # FlareSolverr - Bypass Cloudflare for La-Cale uploads
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TZ:-Europe/Paris}
+    networks:
+      - gateway-network
 
 networks:
   gateway-network:

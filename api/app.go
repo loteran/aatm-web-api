@@ -186,6 +186,8 @@ func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string
 		*info.Private = true
 	}
 
+	info.Source = "lacale"
+
 	err := info.BuildFromFilePath(sourcePath)
 	if err != nil {
 		return "", err
@@ -373,6 +375,13 @@ func (a *App) CreateHardlink(sourcePath string, destDir string, destName string)
 		baseName = destName
 	}
 	destPath := filepath.Join(destDir, baseName)
+
+	// If destination already exists, remove it first
+	if _, err := os.Stat(destPath); err == nil {
+		if err := os.RemoveAll(destPath); err != nil {
+			return "", fmt.Errorf("failed to remove existing destination: %w", err)
+		}
+	}
 
 	if sourceInfo.IsDir() {
 		// For directories, create directory structure and hardlink all files
