@@ -61,9 +61,9 @@ Par défaut, les fichiers `.torrent` et `.nfo` sont créés dans `/torrents` (ma
 ```
 /torrents/
 ├── Films/
-│   └── The.Game.1997.MULTi.1080p.BluRay.AC3.5.1.X265-MM91/
-│       ├── The.Game.1997.MULTi.1080p.BluRay.AC3.5.1.X265-MM91.torrent
-│       └── The.Game.1997.MULTi.1080p.BluRay.AC3.5.1.X265-MM91.nfo
+│   └── The.film.2024.MULTi.1080p.BluRay.AC3.5.1.X265-GROUPE/
+│       ├── The.film.2024.MULTi.1080p.BluRay.AC3.5.1.X265-GROUPE.torrent
+│       └── The.film.2024.MULTi.1080p.BluRay.AC3.5.1.X265-GROUPE.nfo
 ├── Séries/
 ├── Ebooks/
 └── Jeux/
