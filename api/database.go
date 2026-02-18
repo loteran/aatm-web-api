@@ -38,6 +38,8 @@ type AppSettings struct {
 	IsFullAuto       bool `json:"isFullAuto"`
 	EnableHardlink   bool `json:"enableHardlink"`
 	HardlinkDirs     []string `json:"hardlinkDirs"`
+	// Output directory for .torrent and .nfo files
+	OutputDir string `json:"outputDir"`
 }
 
 // InitDB initializes the SQLite database
@@ -129,6 +131,9 @@ func (a *App) GetSettings() AppSettings {
 	if settings.DelugePassword == "" {
 		settings.DelugePassword = defaults.DelugePassword
 	}
+	if settings.OutputDir == "" {
+		settings.OutputDir = defaults.OutputDir
+	}
 	return settings
 }
 
@@ -149,6 +154,7 @@ func getDefaultSettings() AppSettings {
 		DelugePassword:       "deluge",
 		ShowProcessed:        false,
 		ShowNotProcessed:     true,
+		OutputDir:            "/torrents",
 	}
 }
 

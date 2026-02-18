@@ -1,0 +1,120 @@
+package main
+
+// localTagsDB: fallback tags when La-Cale API returns null for a group
+var localTagsDB = map[string][]MetaTag{
+	// Extension
+	"extension": {
+		{ID: "d5fuf51sup7s73bbcmq0", Name: "Autres Extensions", Slug: ""},
+		{ID: "d5fueopsup7s73cg5qo0", Name: "AVI", Slug: ""},
+		{ID: "d5fuevpsup7s739du1l0", Name: "ISO", Slug: ""},
+		{ID: "d5fuer9sup7s73eq24s0", Name: "MKV", Slug: ""},
+		{ID: "d5fuelpsup7s73b9ntu0", Name: "MP4", Slug: ""},
+	},
+	// Genres
+	"genres": {
+		{ID: "cmjudwh76000guyrus1jc9jxs", Name: "Action", Slug: ""},
+		{ID: "cmjudwhrd000iuyruhm4bd82d", Name: "Animation", Slug: ""},
+		{ID: "cmjudwhi0000huyru6x3xirry", Name: "Aventure", Slug: ""},
+		{ID: "cmjudwl30000tuyrug7nl1dih", Name: "Biopic", Slug: ""},
+		{ID: "d5l48s1ua6hc738ejoo0", Name: "Collections", Slug: ""},
+		{ID: "cmjudwi0v000juyrujjoqy8ya", Name: "Comédie", Slug: ""},
+		{ID: "cmjudwld7000uuyrusigq41k6", Name: "Courts-métrages", Slug: ""},
+		{ID: "cmjudwiay000kuyruuh6y6sux", Name: "Documentaire", Slug: ""},
+		{ID: "cmjudwilv000luyruldwrewad", Name: "Drame", Slug: ""},
+		{ID: "cmjudwteq001juyruql1f2o18", Name: "Émission TV", Slug: ""},
+		{ID: "cmjudwiw7000muyruiwezf9u9", Name: "Fantastique", Slug: ""},
+		{ID: "cmjudwkto000suyruryh2tokp", Name: "Guerre", Slug: ""},
+		{ID: "cmjudwllt000vuyruryo0oj20", Name: "Historique", Slug: ""},
+		{ID: "cmjudwj5c000nuyruu32px04l", Name: "Horreur", Slug: ""},
+		{ID: "cmjudwjf9000ouyrud0gadn2q", Name: "Policier / Thriller", Slug: ""},
+		{ID: "cmjudwkdw000ruyruwu1f7ps7", Name: "Romance", Slug: ""},
+		{ID: "cmjudwjri000puyru2t0vy9w9", Name: "Science-fiction", Slug: ""},
+		{ID: "cmjudwt42001iuyru9xod9658", Name: "Sport", Slug: ""},
+		{ID: "d5hn26pua6hc738iv6ig", Name: "Téléfilm", Slug: ""},
+		{ID: "cmjudwk3e000quyrumxlv4nxg", Name: "Western", Slug: ""},
+	},
+	// Qualité / Résolution
+	"qualit-r-solution": {
+		{ID: "44d9f0e4-5ff2-4c6f-9e17-ec2e33acf448", Name: "1080p (Full HD)", Slug: ""},
+		{ID: "e42ac76f-d1b0-4ea4-a3da-f332af0f8f4c", Name: "2160p (4K)", Slug: ""},
+		{ID: "20d145d3-db89-4996-933c-48cf51ee5b6b", Name: "4320p (8K)", Slug: ""},
+		{ID: "86e547c3-7416-46c5-a759-fc1a5d32cc23", Name: "720p (HD)", Slug: ""},
+		{ID: "cmjudwm65000xuyrubkb2ztkf", Name: "SD", Slug: ""},
+	},
+	// Codec vidéo
+	"codec-vid-o": {
+		{ID: "cmjudwnvj0010uyrusdqdsydj", Name: "AV1", Slug: ""},
+		{ID: "cmjoyv2id000u7eryugoe1bee", Name: "AVC/H264/x264", Slug: ""},
+		{ID: "cmjoyv2ig000v7eryc9hf1hsa", Name: "HEVC/H265/x265", Slug: ""},
+		{ID: "5c9bb557-4fd7-488a-8ce7-83c26c7049f2", Name: "MPEG", Slug: ""},
+		{ID: "168bff0e-8649-4fb4-86d9-87006c2aa511", Name: "VC-1", Slug: ""},
+		{ID: "f77bbe91-82c6-440d-a302-c3015edc19a8", Name: "VCC/H266/x266", Slug: ""},
+		{ID: "34d10b63-fcd7-4b12-91df-48cde5cb63c0", Name: "VP9", Slug: ""},
+	},
+	// Caractéristiques vidéo
+	"caract-ristiques-vid-o": {
+		{ID: "d3827daf-6d53-4d61-8e88-5a5b33ddd85f", Name: "10 bits", Slug: ""},
+		{ID: "d5eg09psup7s739bto70", Name: "3D", Slug: ""},
+		{ID: "862f0aaf-e08d-492f-bf2d-9806c74b676a", Name: "Dolby Vision", Slug: ""},
+		{ID: "4e2f5500-05f9-4f35-b273-233abc8ff991", Name: "HDR", Slug: ""},
+		{ID: "da699e63-de34-4c75-8d65-243d8eb51151", Name: "HDR10+", Slug: ""},
+		{ID: "79771165-c073-490d-81e3-a408b01cfaa6", Name: "HLG", Slug: ""},
+		{ID: "d5gh4ohsup7s73b5irt0", Name: "IMAX", Slug: ""},
+		{ID: "2a3d5386-ba5f-4cce-b957-1456a6a938da", Name: "SDR", Slug: ""},
+	},
+	// Source / Type
+	"source-type": {
+		{ID: "d77a8e79-0035-4df8-8cef-8311a1ea1919", Name: "4KLight", Slug: ""},
+		{ID: "a063935d-adc5-4e69-af04-54f318a80771", Name: "BluRay", Slug: ""},
+		{ID: "48c926bc-8fb6-4163-99b7-c745aba4f1ed", Name: "DVDRip", Slug: ""},
+		{ID: "fca2b774-3587-426c-8b7a-08e0fe51f2c6", Name: "FULL Disc", Slug: ""},
+		{ID: "a1c90ed0-a4b9-4444-bd8d-a4fce8dc5caf", Name: "HDLight", Slug: ""},
+		{ID: "f4e1b729-bc12-4957-94ee-53d10bfbf63a", Name: "REMUX", Slug: ""},
+		{ID: "f8d828b1-1d48-443f-8749-dd4af5cba373", Name: "TV", Slug: ""},
+		{ID: "7bd8b291-6e18-4322-9c35-b3470c90039e", Name: "WEB-DL", Slug: ""},
+		{ID: "86413ec8-af63-4fe2-8c88-cb56ec1b176c", Name: "WEBRip", Slug: ""},
+	},
+	// Codec audio
+	"codec-audio": {
+		{ID: "cmjudwo5h0011uyruofwyb2cn", Name: "AAC", Slug: ""},
+		{ID: "cmjudwodw0012uyrut8jh456x", Name: "AC3", Slug: ""},
+		{ID: "d5e5hc1sup7s73ag6eig", Name: "AC4", Slug: ""},
+		{ID: "d5e5hnhsup7s73ecfpl0", Name: "Autres", Slug: ""},
+		{ID: "cmjudwomi0013uyruthukb2pf", Name: "DTS", Slug: ""},
+		{ID: "5e8475fe-db59-4dd8-84fe-7186eaba134d", Name: "DTS-HD HR", Slug: ""},
+		{ID: "f87c6b8e-6edf-4dbd-b642-205d1060c0d1", Name: "DTS-HD MA", Slug: ""},
+		{ID: "ec308312-a650-4b00-b011-e624c8779939", Name: "DTS:X", Slug: ""},
+		{ID: "3ab66a11-d74c-49b7-a3f9-2efc0edfefb2", Name: "E-AC3", Slug: ""},
+		{ID: "38ea7ff5-bd03-4b41-af5c-211792c0d1e8", Name: "E-AC3 Atmos", Slug: ""},
+		{ID: "d5e6q01sup7s738q0tsg", Name: "FLAC", Slug: ""},
+		{ID: "c1f82902-ad95-4a1c-abdb-3dd8f12b1f40", Name: "HE-AAC", Slug: ""},
+		{ID: "d5e6q2psup7s738q0tt0", Name: "MP3", Slug: ""},
+		{ID: "ebad8b2b-0f23-4a3a-a741-9098e61d5f46", Name: "Opus", Slug: ""},
+		{ID: "4b6f7605-3aa3-411e-8bb4-fd6fcbc9c921", Name: "PCM", Slug: ""},
+		{ID: "c45a5dbb-aad2-461c-96d2-ee4cee3f5d5b", Name: "TrueHD", Slug: ""},
+		{ID: "963a0227-d20b-4878-aa84-1deac1de4479", Name: "TrueHD Atmos", Slug: ""},
+	},
+	// Langues audio
+	"langues-audio": {
+		{ID: "d5elgi9sup7s73emca6g", Name: "Autre Langue", Slug: ""},
+		{ID: "d5eldm1sup7s7387o7ng", Name: "Chinois", Slug: ""},
+		{ID: "d5e5kn1sup7s73b1q4pg", Name: "English", Slug: ""},
+		{ID: "2d45b5d1-2dfe-4de5-b0fe-e4a08132d06a", Name: "French", Slug: ""},
+		{ID: "d5e5jh1sup7s73ecfppg", Name: "Italian", Slug: ""},
+		{ID: "d5e5jchsup7s73ecfpog", Name: "Japanese", Slug: ""},
+		{ID: "d5e5jepsup7s73f6hn9g", Name: "Korean", Slug: ""},
+		{ID: "cmjoyv2i0000q7eryz0dnb7f9", Name: "MULTI", Slug: ""},
+		{ID: "d5hb34pua6hc739gjva0", Name: "Sans Dialogue", Slug: ""},
+		{ID: "d5e5mhhsup7s73cq0sr0", Name: "Spanish", Slug: ""},
+		{ID: "5cc1e14d-b23a-42c5-956e-3ad9e1529b3c", Name: "VFF", Slug: ""},
+		{ID: "b4661137-ed7a-4742-8ebc-40fcb6fa8f8d", Name: "VFQ", Slug: ""},
+	},
+	// Sous-titres
+	"sous-titres": {
+		{ID: "d5elg3psup7s73emvf3g", Name: "Autres sous-titres", Slug: ""},
+		{ID: "d5e6lu9sup7s73a9mimg", Name: "ENG", Slug: ""},
+		{ID: "cmjudwg9q000euyruscojd2q4", Name: "FR", Slug: ""},
+		{ID: "d5elf41sup7s73emc85g", Name: "VFF Sous-Titres", Slug: ""},
+		{ID: "d5elilhsup7s73avoesg", Name: "VFQ Sous-Titres", Slug: ""},
+	},
+}

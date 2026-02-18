@@ -86,10 +86,21 @@ func fetchLaCaleMetadata(apiKey string) (*MetaResponse, error) {
 		return nil, fmt.Errorf("meta API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
+	body, _ := io.ReadAll(resp.Body)
 	var meta MetaResponse
-	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+	if err := json.Unmarshal(body, &meta); err != nil {
 		return nil, fmt.Errorf("failed to decode meta response: %w", err)
 	}
+
+	// Inject local tags for groups where the API returns null
+	for i := range meta.TagGroups {
+		if len(meta.TagGroups[i].Tags) == 0 {
+			if localTags, ok := localTagsDB[meta.TagGroups[i].Slug]; ok {
+				meta.TagGroups[i].Tags = localTags
+			}
+		}
+	}
+
 	return &meta, nil
 }
 
@@ -232,7 +243,7 @@ func (a *App) UploadToQBittorrent(torrentPath string, qbitUrl string, username s
 }
 
 // UploadToLaCale uploads the release metadata and files to la-cale.space
-func (a *App) UploadToLaCale(torrentPath string, nfoPath string, title string, description string, tmdbId string, mediaType string, releaseInfo ReleaseInfo, passkey string, apiKey string) error {
+func (a *App) UploadToLaCale(torrentPath string, nfoPath string, title string, description string, tmdbId string, mediaType string, releaseInfo ReleaseInfo, passkey string, apiKey string, overrideTags []string) error {
 	if apiKey == "" {
 		return fmt.Errorf("La-Cale API key is missing in settings")
 	}
@@ -249,8 +260,13 @@ func (a *App) UploadToLaCale(torrentPath string, nfoPath string, title string, d
 		return fmt.Errorf("could not find a matching category for type: %s", mediaType)
 	}
 
-	// 3. Identify Tags
-	matchedTags := findMatchingTags(meta.TagGroups, releaseInfo)
+	// 3. Identify Tags (use overrideTags if provided)
+	var matchedTags []string
+	if len(overrideTags) > 0 {
+		matchedTags = overrideTags
+	} else {
+		matchedTags = findMatchingTags(meta.TagGroups, releaseInfo)
+	}
 
 	// 4. Upload (External API with API Key)
 	client := &http.Client{}
@@ -327,13 +343,15 @@ func (a *App) UploadToLaCale(torrentPath string, nfoPath string, title string, d
 
 	uploadResp, err := client.Do(req)
 	if err != nil {
+		fmt.Printf("UploadToLaCale: HTTP request error: %v\n", err)
 		return fmt.Errorf("upload request failed: %w", err)
 	}
 	defer uploadResp.Body.Close()
 
 	respBody, _ := io.ReadAll(uploadResp.Body)
-	fmt.Printf("La-Cale response (Status %d): %s\n", uploadResp.StatusCode, string(respBody))
-	fmt.Printf("La-Cale response headers: %v\n", uploadResp.Header)
+	fmt.Printf("UploadToLaCale: Status=%d\n", uploadResp.StatusCode)
+	fmt.Printf("UploadToLaCale: Response body: %s\n", string(respBody))
+	fmt.Printf("UploadToLaCale: Response headers: %v\n", uploadResp.Header)
 
 	if uploadResp.StatusCode < 200 || uploadResp.StatusCode >= 300 {
 		return fmt.Errorf("API Error (Status %d) | Response: %s", uploadResp.StatusCode, string(respBody))
@@ -342,6 +360,104 @@ func (a *App) UploadToLaCale(torrentPath string, nfoPath string, title string, d
 	return nil
 }
 
+
+// Preview structs
+type PreviewTag struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Group string `json:"group"`
+}
+
+type PreviewTagGroup struct {
+	ID   string       `json:"id"`
+	Name string       `json:"name"`
+	Slug string       `json:"slug"`
+	Tags []PreviewTag `json:"tags"`
+}
+
+type LaCalePreviewResponse struct {
+	CategoryId   string            `json:"categoryId"`
+	CategoryName string            `json:"categoryName"`
+	MatchedTags  []PreviewTag      `json:"matchedTags"`
+	AllTagGroups []PreviewTagGroup `json:"allTagGroups"`
+}
+
+// PreviewLaCale returns preview data (category, matched tags, all tag groups) without uploading
+func (a *App) PreviewLaCale(mediaType string, releaseInfo ReleaseInfo, apiKey string) (*LaCalePreviewResponse, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("La-Cale API key is missing in settings")
+	}
+
+	meta, err := fetchLaCaleMetadata(apiKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch La-Cale metadata: %w", err)
+	}
+
+	categoryId := findCategory(meta.Categories, mediaType)
+	categoryName := findCategoryName(meta.Categories, categoryId)
+
+	matchedTagIds := findMatchingTags(meta.TagGroups, releaseInfo)
+
+	// Build a set of matched IDs for quick lookup
+	matchedSet := make(map[string]bool)
+	for _, id := range matchedTagIds {
+		matchedSet[id] = true
+	}
+
+	// Build matched tags with names and groups
+	var matchedTags []PreviewTag
+	for _, group := range meta.TagGroups {
+		for _, tag := range group.Tags {
+			if matchedSet[tag.ID] {
+				matchedTags = append(matchedTags, PreviewTag{
+					ID:    tag.ID,
+					Name:  tag.Name,
+					Group: group.Name,
+				})
+			}
+		}
+	}
+
+	// Build all tag groups
+	var allTagGroups []PreviewTagGroup
+	for _, group := range meta.TagGroups {
+		pg := PreviewTagGroup{
+			ID:   group.ID,
+			Name: group.Name,
+			Slug: group.Slug,
+		}
+		for _, tag := range group.Tags {
+			pg.Tags = append(pg.Tags, PreviewTag{
+				ID:    tag.ID,
+				Name:  tag.Name,
+				Group: group.Name,
+			})
+		}
+		allTagGroups = append(allTagGroups, pg)
+	}
+
+	return &LaCalePreviewResponse{
+		CategoryId:   categoryId,
+		CategoryName: categoryName,
+		MatchedTags:  matchedTags,
+		AllTagGroups: allTagGroups,
+	}, nil
+}
+
+// findCategoryName recursively finds the name of a category by its ID
+func findCategoryName(categories []MetaCategory, targetId string) string {
+	for _, cat := range categories {
+		if cat.ID == targetId {
+			return cat.Name
+		}
+		if len(cat.Children) > 0 {
+			if name := findCategoryName(cat.Children, targetId); name != "" {
+				return name
+			}
+		}
+	}
+	return ""
+}
 
 // Helpers
 
@@ -410,6 +526,7 @@ func findMatchingTags(tagGroups []MetaTagGroup, info ReleaseInfo) []string {
 		tagsFoundForGroup := false
 
 		var valuesToCheck []string
+		strictMatch := false // used for codec-audio: exact match only to avoid AC3 matching E-AC3
 
 		switch {
 		case strings.Contains(slug, "genre"):
@@ -423,6 +540,7 @@ func findMatchingTags(tagGroups []MetaTagGroup, info ReleaseInfo) []string {
 			if len(valuesToCheck) == 0 && info.Audio != "" {
 				valuesToCheck = []string{info.Audio}
 			}
+			strictMatch = true
 		case strings.Contains(slug, "langue"):
 			valuesToCheck = info.AudioLanguages
 			if len(valuesToCheck) == 0 && info.Language != "" {
@@ -430,6 +548,7 @@ func findMatchingTags(tagGroups []MetaTagGroup, info ReleaseInfo) []string {
 			}
 		case strings.Contains(slug, "sous-titre"):
 			valuesToCheck = info.SubtitleLanguages
+			// note: isSubtitle set below after switch
 		case strings.Contains(slug, "extension") || strings.Contains(slug, "format"):
 			valuesToCheck = []string{info.Container}
 		case strings.Contains(slug, "source"):
@@ -441,15 +560,17 @@ func findMatchingTags(tagGroups []MetaTagGroup, info ReleaseInfo) []string {
 			continue
 		}
 
-		// Filter empty and build valid values with genre translations
+		// Filter empty and build valid values with genre/language translations
 		validValues := []string{}
 		isGenre := strings.Contains(slug, "genre")
+		isLang := strings.Contains(slug, "langue")
+		isSubtitle := strings.Contains(slug, "sous-titre")
 
 		for _, v := range valuesToCheck {
 			if v != "" {
 				validValues = append(validValues, strings.ToLower(v))
+				lowerV := strings.ToLower(v)
 				if isGenre {
-					lowerV := strings.ToLower(v)
 					switch lowerV {
 					case "adventure":
 						validValues = append(validValues, "aventure")
@@ -473,6 +594,50 @@ func findMatchingTags(tagGroups []MetaTagGroup, info ReleaseInfo) []string {
 						validValues = append(validValues, "science-fiction", "fantastique")
 					}
 				}
+				if isLang || isSubtitle {
+					// Add both French and English equivalents for language/subtitle matching
+					// For subtitles, also add short codes (fr, eng) to match tags like "FR", "ENG"
+					switch lowerV {
+					case "français", "french":
+						validValues = append(validValues, "french", "français", "fr")
+					case "anglais", "english":
+						validValues = append(validValues, "english", "anglais", "eng")
+					case "espagnol", "spanish":
+						validValues = append(validValues, "spanish", "espagnol")
+					case "allemand", "german", "deutsch":
+						validValues = append(validValues, "german", "deutsch", "allemand")
+					case "italien", "italian", "italiano":
+						validValues = append(validValues, "italian", "italiano", "italien")
+					case "portugais", "portuguese":
+						validValues = append(validValues, "portuguese", "portugais")
+					case "japonais", "japanese":
+						validValues = append(validValues, "japanese", "japonais")
+					case "coréen", "korean":
+						validValues = append(validValues, "korean", "coréen")
+					case "chinois", "chinese":
+						validValues = append(validValues, "chinese", "chinois")
+					case "russe", "russian":
+						validValues = append(validValues, "russian", "russe")
+					case "arabe", "arabic":
+						validValues = append(validValues, "arabic", "arabe")
+					}
+					// For subtitles: values often contain language + suffix ("Anglais (Forcés PGS)")
+					// so also add translations based on Contains, not just exact match
+					if isSubtitle {
+						switch {
+						case strings.Contains(lowerV, "anglais") || strings.Contains(lowerV, "english"):
+							validValues = append(validValues, "english", "anglais", "eng")
+						case strings.Contains(lowerV, "français") || strings.Contains(lowerV, "french"):
+							validValues = append(validValues, "french", "français", "fr", "francais")
+						case strings.Contains(lowerV, "espagnol") || strings.Contains(lowerV, "spanish"):
+							validValues = append(validValues, "spanish", "espagnol")
+						case strings.Contains(lowerV, "allemand") || strings.Contains(lowerV, "german"):
+							validValues = append(validValues, "german", "deutsch", "allemand")
+						case strings.Contains(lowerV, "italien") || strings.Contains(lowerV, "italian"):
+							validValues = append(validValues, "italian", "italien")
+						}
+					}
+				}
 			}
 		}
 
@@ -491,12 +656,14 @@ func findMatchingTags(tagGroups []MetaTagGroup, info ReleaseInfo) []string {
 
 				if normTag == normVal || normSlug == normVal {
 					isMatch = true
-				} else if strings.Contains(normTag, normVal) || strings.Contains(normSlug, normVal) {
-					isMatch = true
-				} else if strings.Contains(normVal, normTag) {
-					isMatch = true
-				} else if strings.Contains(strings.ToLower(tag.Name), strings.ToLower(val)) {
-					isMatch = true
+				} else if !strictMatch {
+					if strings.Contains(normTag, normVal) || strings.Contains(normSlug, normVal) {
+						isMatch = true
+					} else if strings.Contains(normVal, normTag) {
+						isMatch = true
+					} else if strings.Contains(strings.ToLower(tag.Name), strings.ToLower(val)) {
+						isMatch = true
+					}
 				}
 
 				if isMatch {
@@ -511,7 +678,56 @@ func findMatchingTags(tagGroups []MetaTagGroup, info ReleaseInfo) []string {
 		}
 
 		// Fallback "Autre"
-		if !tagsFoundForGroup {
+		// For subtitles: also activate fallback additively if any original subtitle value
+		// has no corresponding non-fallback tag (e.g. Spanish subtitles when only FR/ENG tags exist)
+		needsFallback := !tagsFoundForGroup
+		if !needsFallback && isSubtitle {
+			for _, origVal := range valuesToCheck {
+				if origVal == "" {
+					continue
+				}
+				lo := strings.ToLower(origVal)
+				// Build check values including translations for this original value
+				checkVals := []string{normalize(lo)}
+				switch {
+				case strings.Contains(lo, "anglais") || strings.Contains(lo, "english"):
+					checkVals = append(checkVals, "english", "eng", "anglais")
+				case strings.Contains(lo, "français") || strings.Contains(lo, "french"):
+					checkVals = append(checkVals, "french", "fr", "francais")
+				case strings.Contains(lo, "espagnol") || strings.Contains(lo, "spanish"):
+					checkVals = append(checkVals, "spanish", "espagnol")
+				case strings.Contains(lo, "allemand") || strings.Contains(lo, "german"):
+					checkVals = append(checkVals, "german", "deutsch", "allemand")
+				case strings.Contains(lo, "italien") || strings.Contains(lo, "italian"):
+					checkVals = append(checkVals, "italian", "italien")
+				case strings.Contains(lo, "vff"):
+					checkVals = append(checkVals, "vff")
+				case strings.Contains(lo, "vfq"):
+					checkVals = append(checkVals, "vfq")
+				}
+				covered := false
+				for _, tag := range group.Tags {
+					if strings.HasPrefix(strings.ToLower(tag.Name), "autre") {
+						continue
+					}
+					normTagName := normalize(tag.Name)
+					for _, cv := range checkVals {
+						if normTagName == cv || strings.Contains(cv, normTagName) || strings.Contains(normTagName, cv) {
+							covered = true
+							break
+						}
+					}
+					if covered {
+						break
+					}
+				}
+				if !covered {
+					needsFallback = true
+					break
+				}
+			}
+		}
+		if needsFallback {
 			for _, tag := range group.Tags {
 				if strings.EqualFold(tag.Name, "Autre") || strings.EqualFold(tag.Name, "Autres") || strings.HasPrefix(strings.ToLower(tag.Name), "autre") {
 					addTag(tag)

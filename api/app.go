@@ -1,16 +1,96 @@
 package main
 
 import (
+	"crypto/sha1"
 	"fmt"
+	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 )
+
+// TorrentTask represents an async torrent creation task
+type TorrentTask struct {
+	ID          string  `json:"id"`
+	Status      string  `json:"status"` // "hashing", "building", "done", "error"
+	Progress    float64 `json:"progress"` // 0.0 to 1.0
+	TorrentPath string  `json:"torrentPath,omitempty"`
+	Error       string  `json:"error,omitempty"`
+	TotalBytes  int64   `json:"totalBytes"`
+	HashedBytes int64   `json:"hashedBytes"`
+}
+
+// TaskManager manages async torrent creation tasks
+type TaskManager struct {
+	mu    sync.RWMutex
+	tasks map[string]*TorrentTask
+}
+
+// NewTaskManager creates a new TaskManager
+func NewTaskManager() *TaskManager {
+	return &TaskManager{
+		tasks: make(map[string]*TorrentTask),
+	}
+}
+
+func generateTaskID() string {
+	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, 12)
+	for i := range b {
+		b[i] = chars[rand.Intn(len(chars))]
+	}
+	return fmt.Sprintf("%d_%s", time.Now().UnixMilli(), string(b))
+}
+
+func (tm *TaskManager) GetTask(id string) *TorrentTask {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	t, ok := tm.tasks[id]
+	if !ok {
+		return nil
+	}
+	// Return a copy
+	cp := *t
+	return &cp
+}
+
+func (tm *TaskManager) createTask() *TorrentTask {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	task := &TorrentTask{
+		ID:     generateTaskID(),
+		Status: "hashing",
+	}
+	tm.tasks[task.ID] = task
+	return task
+}
+
+func (tm *TaskManager) updateTask(id string, fn func(t *TorrentTask)) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	if t, ok := tm.tasks[id]; ok {
+		fn(t)
+	}
+}
+
+// CleanOldTasks removes completed/errored tasks older than 10 minutes
+func (tm *TaskManager) CleanOldTasks() {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	for id, t := range tm.tasks {
+		if t.Status == "done" || t.Status == "error" {
+			delete(tm.tasks, id)
+		}
+	}
+}
 
 // Supported media extensions
 var videoExtensions = map[string]bool{
@@ -58,11 +138,15 @@ type FileInfo struct {
 }
 
 // App struct
-type App struct{}
+type App struct {
+	TaskMgr *TaskManager
+}
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{
+		TaskMgr: NewTaskManager(),
+	}
 }
 
 // ListDirectory returns the contents of the given directory
@@ -147,8 +231,61 @@ func dirContainsMediaDepth(path string, currentDepth, maxDepth int) bool {
 	return false
 }
 
+// findFirstVideoFile searches for the first video file in a directory (sorted alphabetically).
+// It checks the top level first, then one level of subdirectories.
+func findFirstVideoFile(dirPath string) string {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return ""
+	}
+	// First pass: look for video files directly in the directory
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if isVideoFile(ext) {
+			return filepath.Join(dirPath, entry.Name())
+		}
+	}
+	// Second pass: look one level deep in subdirectories
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		subEntries, err := os.ReadDir(filepath.Join(dirPath, entry.Name()))
+		if err != nil {
+			continue
+		}
+		for _, subEntry := range subEntries {
+			if subEntry.IsDir() {
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(subEntry.Name()))
+			if isVideoFile(ext) {
+				return filepath.Join(dirPath, entry.Name(), subEntry.Name())
+			}
+		}
+	}
+	return ""
+}
+
 // GetMediaInfo executes mediainfo command on the file and returns output
+// If filePath is a directory, it finds the first video file inside for analysis
 func (a *App) GetMediaInfo(filePath string) (string, error) {
+	// Check if path is a directory; if so, find the first video file
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return "", fmt.Errorf("cannot stat path: %w", err)
+	}
+	if info.IsDir() {
+		videoFile := findFirstVideoFile(filePath)
+		if videoFile != "" {
+			filePath = videoFile
+		}
+		// If no video file found, pass directory as-is to mediainfo (legacy fallback)
+	}
+
 	// Check if mediainfo is in PATH
 	path, err := exec.LookPath("mediainfo")
 	if err != nil {
@@ -174,11 +311,74 @@ func (a *App) GetMediaInfo(filePath string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
+// mediaTypeDirName maps a media type string to the corresponding subdirectory name
+func mediaTypeDirName(mediaType string) string {
+	switch mediaType {
+	case "movie":
+		return "Films"
+	case "episode", "season":
+		return "Séries"
+	case "ebook":
+		return "Ebooks"
+	case "game":
+		return "Jeux"
+	default:
+		return "Autres"
+	}
+}
+
+// resolveOutputDir builds and creates the output directory:
+// {outputDir}/{MediaTypeDir}/{torrentName}/
+func resolveOutputDir(outputDir, mediaType, torrentName string) (string, error) {
+	if outputDir == "" {
+		outputDir = "/torrents"
+	}
+	dir := filepath.Join(outputDir, mediaTypeDirName(mediaType), torrentName)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("cannot create output directory %s: %w", dir, err)
+	}
+	return dir, nil
+}
+
+// calculatePieceLength returns an appropriate piece length based on total content size
+func calculatePieceLength(sourcePath string) int64 {
+	var totalSize int64
+	filepath.Walk(sourcePath, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+		}
+		return nil
+	})
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+	)
+	switch {
+	case totalSize > 50*GB:
+		return 16 * MB
+	case totalSize > 16*GB:
+		return 8 * MB
+	case totalSize > 8*GB:
+		return 4 * MB
+	case totalSize > 4*GB:
+		return 2 * MB
+	case totalSize > 1*GB:
+		return 1 * MB
+	default:
+		return 512 * KB
+	}
+}
+
 // CreateTorrent creates a .torrent file for the given source path
 // torrentName is the name that will appear in the torrent (the release name)
 func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string, isPrivate bool, torrentName string) (string, error) {
+	pieceLength := calculatePieceLength(sourcePath)
 	info := metainfo.Info{
-		PieceLength: 256 * 1024,
+		PieceLength: pieceLength,
 	}
 
 	if isPrivate {
@@ -219,21 +419,237 @@ func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string
 	}
 	mi.InfoBytes = infoBytes
 
-	// Determine output path
-	// If source is in /host (read-only), save torrent to /torrents instead
-	// Use the torrent name for the output file if provided
+	// Determine output path using configured outputDir
 	var baseName string
 	if torrentName != "" {
 		baseName = torrentName
 	} else {
 		baseName = filepath.Base(sourcePath)
 	}
-	var outputPath string
-	if strings.HasPrefix(sourcePath, "/host") {
-		outputPath = filepath.Join("/torrents", baseName+".torrent")
-	} else {
-		outputPath = filepath.Join(filepath.Dir(sourcePath), baseName+".torrent")
+	outDir, err := resolveOutputDir("/torrents", "", baseName)
+	if err != nil {
+		return "", err
 	}
+	outputPath := filepath.Join(outDir, baseName+".torrent")
+
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return "", err
+	}
+	defer outFile.Close()
+
+	err = mi.Write(outFile)
+	if err != nil {
+		return "", err
+	}
+
+	return outputPath, nil
+}
+
+// StartCreateTorrent launches async torrent creation and returns a task ID
+func (a *App) StartCreateTorrent(sourcePath string, trackers []string, comment string, isPrivate bool, torrentName string, outputDir string, mediaType string) string {
+	task := a.TaskMgr.createTask()
+	taskID := task.ID
+
+	go func() {
+		result, err := a.createTorrentWithProgress(taskID, sourcePath, trackers, comment, isPrivate, torrentName, outputDir, mediaType)
+		if err != nil {
+			a.TaskMgr.updateTask(taskID, func(t *TorrentTask) {
+				t.Status = "error"
+				t.Error = err.Error()
+			})
+			return
+		}
+		a.TaskMgr.updateTask(taskID, func(t *TorrentTask) {
+			t.Status = "done"
+			t.TorrentPath = result
+			t.Progress = 1.0
+		})
+	}()
+
+	return taskID
+}
+
+// createTorrentWithProgress builds a torrent file with progress tracking
+func (a *App) createTorrentWithProgress(taskID string, sourcePath string, trackers []string, comment string, isPrivate bool, torrentName string, outputDir string, mediaType string) (string, error) {
+	pieceLength := calculatePieceLength(sourcePath)
+
+	// Phase 1: Walk filesystem to build file list and total size
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	isDir := sourceInfo.IsDir()
+
+	type fileEntry struct {
+		absPath string
+		relPath []string
+		length  int64
+	}
+
+	var fileList []fileEntry
+	var totalSize int64
+
+	if isDir {
+		filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			relPath, _ := filepath.Rel(sourcePath, path)
+			parts := strings.Split(relPath, string(os.PathSeparator))
+			fileList = append(fileList, fileEntry{
+				absPath: path,
+				relPath: parts,
+				length:  info.Size(),
+			})
+			totalSize += info.Size()
+			return nil
+		})
+	} else {
+		fileList = append(fileList, fileEntry{
+			absPath: sourcePath,
+			length:  sourceInfo.Size(),
+		})
+		totalSize = sourceInfo.Size()
+	}
+
+	a.TaskMgr.updateTask(taskID, func(t *TorrentTask) {
+		t.TotalBytes = totalSize
+	})
+
+	// Phase 2: Hash pieces with progress tracking
+	var pieces []byte
+	var hashedBytes int64
+
+	pieceBuf := make([]byte, pieceLength)
+	pieceBufLen := int64(0)
+	readBuf := make([]byte, 64*1024) // 64KB read buffer
+	lastUpdate := time.Now()
+
+	flushPiece := func() {
+		h := sha1.Sum(pieceBuf[:pieceBufLen])
+		pieces = append(pieces, h[:]...)
+		pieceBufLen = 0
+	}
+
+	for _, fe := range fileList {
+		f, err := os.Open(fe.absPath)
+		if err != nil {
+			return "", fmt.Errorf("open %s: %w", fe.absPath, err)
+		}
+
+		for {
+			remaining := pieceLength - pieceBufLen
+			toRead := int64(len(readBuf))
+			if toRead > remaining {
+				toRead = remaining
+			}
+
+			n, readErr := f.Read(readBuf[:toRead])
+			if n > 0 {
+				copy(pieceBuf[pieceBufLen:], readBuf[:n])
+				pieceBufLen += int64(n)
+				hashedBytes += int64(n)
+
+				if pieceBufLen == pieceLength {
+					flushPiece()
+				}
+
+				// Update progress every 500ms to avoid lock contention
+				if time.Since(lastUpdate) > 500*time.Millisecond {
+					hb := hashedBytes
+					a.TaskMgr.updateTask(taskID, func(t *TorrentTask) {
+						t.HashedBytes = hb
+						t.Progress = float64(hb) / float64(totalSize)
+					})
+					lastUpdate = time.Now()
+				}
+			}
+			if readErr == io.EOF {
+				break
+			}
+			if readErr != nil {
+				f.Close()
+				return "", fmt.Errorf("read %s: %w", fe.absPath, readErr)
+			}
+		}
+		f.Close()
+	}
+
+	// Flush remaining partial piece
+	if pieceBufLen > 0 {
+		flushPiece()
+	}
+
+	// Final progress update
+	a.TaskMgr.updateTask(taskID, func(t *TorrentTask) {
+		t.Status = "building"
+		t.HashedBytes = totalSize
+		t.Progress = 1.0
+	})
+
+	// Phase 3: Build metainfo struct
+	info := metainfo.Info{
+		PieceLength: pieceLength,
+		Pieces:      pieces,
+		Name:        filepath.Base(sourcePath),
+	}
+
+	if isPrivate {
+		info.Private = new(bool)
+		*info.Private = true
+	}
+	info.Source = "lacale"
+
+	if isDir {
+		for _, fe := range fileList {
+			info.Files = append(info.Files, metainfo.FileInfo{
+				Path:   fe.relPath,
+				Length: fe.length,
+			})
+		}
+	} else {
+		info.Length = totalSize
+	}
+
+	if torrentName != "" {
+		info.Name = torrentName
+	}
+
+	// Phase 4: Encode and write .torrent file
+	mi := metainfo.MetaInfo{
+		AnnounceList: func() [][]string {
+			var list [][]string
+			for _, url := range trackers {
+				if strings.TrimSpace(url) != "" {
+					list = append(list, []string{url})
+				}
+			}
+			return list
+		}(),
+		Comment:   comment,
+		CreatedBy: "AATM-API",
+	}
+	mi.SetDefaults()
+
+	infoBytes, err := bencode.Marshal(info)
+	if err != nil {
+		return "", err
+	}
+	mi.InfoBytes = infoBytes
+
+	var baseName string
+	if torrentName != "" {
+		baseName = torrentName
+	} else {
+		baseName = filepath.Base(sourcePath)
+	}
+
+	outDir, err := resolveOutputDir(outputDir, mediaType, baseName)
+	if err != nil {
+		return "", err
+	}
+	outputPath := filepath.Join(outDir, baseName+".torrent")
 
 	outFile, err := os.Create(outputPath)
 	if err != nil {
@@ -250,8 +666,9 @@ func (a *App) CreateTorrent(sourcePath string, trackers []string, comment string
 }
 
 // SaveNfo saves the NFO content to a file
-// If torrentName is provided, it will be used as the filename
-func (a *App) SaveNfo(sourcePath string, content string, torrentName string) (string, error) {
+// outputDir and mediaType are used to build the output path:
+// {outputDir}/{MediaTypeDir}/{torrentName}/{torrentName}.nfo
+func (a *App) SaveNfo(sourcePath string, content string, torrentName string, outputDir string, mediaType string) (string, error) {
 	// Determine base name: use torrentName if provided, otherwise derive from source
 	var baseName string
 	if torrentName != "" {
@@ -260,26 +677,18 @@ func (a *App) SaveNfo(sourcePath string, content string, torrentName string) (st
 		baseName = filepath.Base(sourcePath)
 		ext := filepath.Ext(sourcePath)
 		lowerExt := strings.ToLower(ext)
-
-		// Strip extension if it's a known media file
 		if isMediaFile(lowerExt) {
 			baseName = strings.TrimSuffix(baseName, ext)
 		}
 	}
 
-	// Determine output directory
-	// If source is in /host (read-only), save to /torrents instead
-	var outputDir string
-	if strings.HasPrefix(sourcePath, "/host") {
-		outputDir = "/torrents"
-	} else {
-		outputDir = filepath.Dir(sourcePath)
+	dir, err := resolveOutputDir(outputDir, mediaType, baseName)
+	if err != nil {
+		return "", err
 	}
 
-	outputPath := filepath.Join(outputDir, baseName+".nfo")
-
-	err := os.WriteFile(outputPath, []byte(content), 0644)
-	if err != nil {
+	outputPath := filepath.Join(dir, baseName+".nfo")
+	if err := os.WriteFile(outputPath, []byte(content), 0644); err != nil {
 		return "", err
 	}
 	return outputPath, nil
@@ -341,24 +750,33 @@ func (a *App) FindMatchingHardlinkDir(sourcePath string, hardlinkDirs []string) 
 		return "", fmt.Errorf("cannot get device ID for source: %w", err)
 	}
 
+	// For files: the source's parent dir must not be used as hardlink destination
+	// (would result in linking a file to itself, then deleting the original)
+	sourceParent := filepath.Dir(filepath.Clean(sourcePath))
+
 	for _, dir := range hardlinkDirs {
 		if dir == "" {
 			continue
 		}
-		// Ensure the directory exists
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
+		cleanDir := filepath.Clean(dir)
+		// Skip if the hardlink dir is the same as (or a parent of) the source's directory
+		if cleanDir == sourceParent {
 			continue
 		}
-		dirDevID, err := getDeviceID(dir)
+		// Ensure the directory exists
+		if _, err := os.Stat(cleanDir); os.IsNotExist(err) {
+			continue
+		}
+		dirDevID, err := getDeviceID(cleanDir)
 		if err != nil {
 			continue
 		}
 		if dirDevID == sourceDevID {
-			return dir, nil
+			return cleanDir, nil
 		}
 	}
 
-	return "", fmt.Errorf("no hardlink directory found on the same device as %s", sourcePath)
+	return "", fmt.Errorf("no hardlink directory found on the same device as %s (source parent dir is excluded)", sourcePath)
 }
 
 // CreateHardlink creates hardlinks for the source path in the destination directory
@@ -375,6 +793,11 @@ func (a *App) CreateHardlink(sourcePath string, destDir string, destName string)
 		baseName = destName
 	}
 	destPath := filepath.Join(destDir, baseName)
+
+	// Safety check: never create a hardlink that points to itself
+	if filepath.Clean(destPath) == filepath.Clean(sourcePath) {
+		return "", fmt.Errorf("source and destination are the same path, cannot hardlink: %s", sourcePath)
+	}
 
 	// If destination already exists, remove it first
 	if _, err := os.Stat(destPath); err == nil {

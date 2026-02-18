@@ -217,6 +217,30 @@
         .release-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.5rem; }
         .search-row { display: flex; gap: 0.5rem; }
         .search-row input { flex: 1; }
+        /* Preview step 5 */
+        .preview-section { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+        .preview-section h4 { color: var(--accent); margin-bottom: 0.75rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .preview-section .form-control { width: 100%; }
+        .preview-section textarea.form-control { min-height: 200px; font-family: monospace; font-size: 0.8rem; line-height: 1.4; }
+        .tag-group { margin-bottom: 0.75rem; }
+        .tag-group-title { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.35rem; font-weight: 500; }
+        .tag-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+        .tag-chip { display: inline-block; padding: 0.2rem 0.6rem; font-size: 0.75rem; border-radius: 12px; cursor: pointer; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-secondary); transition: all 0.15s; user-select: none; }
+        .tag-chip:hover { border-color: var(--accent-dim); color: var(--text-primary); }
+        .tag-chip.selected { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+        .preview-category { display: inline-block; padding: 0.3rem 0.8rem; background: var(--bg-hover); border: 1px solid var(--accent-dim); border-radius: 6px; color: var(--accent); font-weight: 500; font-size: 0.85rem; }
+        #previewLoading { text-align: center; padding: 2rem; }
+        #previewContent { display: none; }
+        .bbcode-tabs { display: flex; gap: 0; margin-bottom: -1px; }
+        .bbcode-tab { padding: 0.4rem 1rem; font-size: 0.8rem; cursor: pointer; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-secondary); border-radius: 4px 4px 0 0; transition: all 0.15s; }
+        .bbcode-tab.active { background: var(--bg-tertiary); color: var(--accent); border-bottom-color: var(--bg-tertiary); }
+        .bbcode-tab-content { display: none; }
+        .bbcode-tab-content.active { display: block; }
+        .bbcode-render { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 0 4px 4px 4px; padding: 1rem; min-height: 200px; font-size: 0.85rem; line-height: 1.7; word-break: break-word; }
+        .bbcode-render img { max-width: 220px; border-radius: 4px; display: block; margin: 0.5rem auto; }
+        .bbcode-render .bbcode-quote { border-left: 3px solid var(--accent-dim); padding: 0.5rem 0.75rem; margin: 0.5rem 0; color: var(--text-secondary); background: var(--bg-secondary); border-radius: 0 4px 4px 0; }
+        .bbcode-render strong { font-weight: 700; }
+        .bbcode-render em { font-style: italic; }
     </style>
 </head>
 <body>
@@ -396,7 +420,12 @@
                                     <label for="renameFile">Renommer le fichier (MKV et hardlink)</label>
                                 </div>
                             </div>
-                            <div id="creationProgress" class="hidden"><div class="loading"><div class="spinner"></div>Creation en cours...</div></div>
+                            <div id="creationProgress" class="hidden">
+                                <div class="loading"><div class="spinner"></div><span id="creationProgressText">Creation en cours...</span></div>
+                                <div style="margin-top:0.5rem;background:var(--bg-primary);border-radius:4px;overflow:hidden;height:20px;">
+                                    <div id="creationProgressBar" style="height:100%;background:var(--accent);width:0%;transition:width 0.3s;display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#000;font-weight:600;"></div>
+                                </div>
+                            </div>
                             <div id="creationResult" class="hidden"></div>
                             <div class="workflow-actions">
                                 <button class="btn btn-secondary" onclick="goToStep(3)" id="btnStep4Back">Precedent</button>
@@ -404,18 +433,48 @@
                             </div>
                         </div>
 
-                        <!-- Step 5: Upload -->
+                        <!-- Step 5: Preview & Upload -->
                         <div class="workflow-content hidden" id="step-5">
-                            <h3 class="workflow-title">Upload</h3>
-                            <div class="detail-section">
-                                <h4>Fichiers crees</h4>
-                                <div class="detail-row"><span class="detail-label">Torrent</span><span class="detail-value" id="createdTorrentPath">-</span></div>
-                                <div class="detail-row"><span class="detail-label">NFO</span><span class="detail-value" id="createdNfoPath">-</span></div>
+                            <h3 class="workflow-title">Apercu et Upload</h3>
+                            <div id="previewLoading">
+                                <div class="loading"><div class="spinner"></div><span>Chargement de l'apercu...</span></div>
+                            </div>
+                            <div id="previewContent">
+                                <div class="preview-section">
+                                    <h4>Titre</h4>
+                                    <input type="text" class="form-control" id="previewTitle" placeholder="Titre du torrent">
+                                </div>
+                                <div class="preview-section">
+                                    <h4>Categorie</h4>
+                                    <span class="preview-category" id="previewCategory">-</span>
+                                </div>
+                                <div class="preview-section">
+                                    <h4>Tags</h4>
+                                    <div id="previewTags"></div>
+                                </div>
+                                <div class="preview-section">
+                                    <h4>Description BBCode</h4>
+                                    <div class="bbcode-tabs">
+                                        <div class="bbcode-tab active" onclick="switchBbcodeTab('source', this)">Source BBCode</div>
+                                        <div class="bbcode-tab" onclick="switchBbcodeTab('render', this)">Aperçu HTML</div>
+                                    </div>
+                                    <div id="bbcodeTabSource" class="bbcode-tab-content active">
+                                        <textarea class="form-control" id="previewDescription" rows="12" style="border-radius:0 4px 4px 4px;" oninput="updateBbcodePreview()"></textarea>
+                                    </div>
+                                    <div id="bbcodeTabRender" class="bbcode-tab-content">
+                                        <div id="bbcodePreviewRender" class="bbcode-render"></div>
+                                    </div>
+                                </div>
+                                <div class="preview-section">
+                                    <h4>Fichiers</h4>
+                                    <div class="detail-row"><span class="detail-label">Torrent</span><span class="detail-value" id="createdTorrentPath">-</span></div>
+                                    <div class="detail-row"><span class="detail-label">NFO</span><span class="detail-value" id="createdNfoPath">-</span></div>
+                                </div>
                             </div>
                             <div id="uploadStatus" style="margin-top: 1rem;"></div>
                             <div class="workflow-actions">
                                 <button class="btn btn-secondary" onclick="goToStep(4)">Precedent</button>
-                                <button class="btn btn-success" id="btnFinish">Terminer et uploader sur La-Cale</button>
+                                <button class="btn btn-success" id="btnFinish" disabled>Uploader sur La-Cale</button>
                             </div>
                         </div>
                     </div>
@@ -429,6 +488,11 @@
                             <div class="form-group">
                                 <label>Chemin racine des medias</label>
                                 <input type="text" class="form-control" id="settingRootPath" placeholder="/media">
+                            </div>
+                            <div class="form-group">
+                                <label>Répertoire de sortie (.torrent et .nfo)</label>
+                                <input type="text" class="form-control" id="settingOutputDir" placeholder="/torrents">
+                                <small style="color:var(--text-muted);">Les fichiers seront créés dans : {répertoire}/{Films|Séries|...}/{nom du torrent}/</small>
                             </div>
                         </div>
                         <div class="settings-section">
@@ -547,7 +611,8 @@
             // Steam (games)
             steamId: '',
             gameData: null,
-            nfoContent: ''
+            nfoContent: '',
+            previewData: null
         };
 
         // ============ PARSER ============
@@ -556,9 +621,14 @@
             if (nfo.match(/Format\s*:\s*Matroska/i)) info.container = 'MKV';
             else if (nfo.match(/Format\s*:\s*MPEG-4/i)) info.container = 'MP4';
 
-            // Résolution : utiliser largeur ET hauteur pour détecter correctement le 4K (films en scope)
-            const widthMatch = nfo.match(/Width\s*:\s*([\d\s]+)/);
-            const heightMatch = nfo.match(/Height\s*:\s*([\d\s]+)/);
+            // Séparer les sections par double saut de ligne pour extraire résolution/codec de la section Video uniquement
+            const allSections = nfo.split(/(?:\r?\n){2,}/);
+            const videoSection = allSections.find(s => /^Video\s*(?:#\d+)?/im.test(s));
+
+            // Résolution : extraire depuis la section Video uniquement (évite les images de couverture embarquées)
+            const videoBlock = videoSection || nfo;
+            const widthMatch = videoBlock.match(/Width\s*:\s*([\d\s]+)/);
+            const heightMatch = videoBlock.match(/Height\s*:\s*([\d\s]+)/);
             if (widthMatch || heightMatch) {
                 const w = widthMatch ? parseInt(widthMatch[1].replace(/\s/g, ''), 10) : 0;
                 const h = heightMatch ? parseInt(heightMatch[1].replace(/\s/g, ''), 10) : 0;
@@ -569,10 +639,11 @@
                 else info.resolution = '480p';
             }
 
-            if (nfo.match(/Writing library\s*:\s*x265/i)) info.codec = 'x265';
-            else if (nfo.match(/Format\s*:\s*HEVC/i)) info.codec = 'HEVC';
-            else if (nfo.match(/Writing library\s*:\s*x264/i)) info.codec = 'x264';
-            else if (nfo.match(/Format\s*:\s*AVC/i)) info.codec = 'AVC';
+            // Codec vidéo : extraire depuis la section Video uniquement
+            if (videoBlock.match(/Writing library\s*:\s*x265/i)) info.codec = 'x265';
+            else if (videoBlock.match(/Format\s*:\s*HEVC/i)) info.codec = 'HEVC';
+            else if (videoBlock.match(/Writing library\s*:\s*x264/i)) info.codec = 'x264';
+            else if (videoBlock.match(/Format\s*:\s*AVC/i)) info.codec = 'AVC';
 
             if (nfo.match(/Format\s*:\s*E-AC-3/i)) info.audio = 'EAC3';
             else if (nfo.match(/Format\s*:\s*AC-3/i)) info.audio = 'AC3';
@@ -1530,7 +1601,10 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
 
                         // Re-parse with NFO content for better tag detection
                         const name = state.selectedFile.split('/').pop();
+                        const prevGenres = state.releaseInfo ? state.releaseInfo.genres : null;
                         state.releaseInfo = parseReleaseName(name, data.mediainfo);
+                        // Preserve genres set from TMDB/metadata at step 2
+                        if (prevGenres && prevGenres.length > 0) state.releaseInfo.genres = prevGenres;
                         updateReleaseTags();
 
                         // Régénérer le nom du torrent avec les infos complètes du NFO
@@ -1552,6 +1626,11 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
             } else if (step === 5) {
                 document.getElementById('createdTorrentPath').textContent = state.createdTorrentPath || '-';
                 document.getElementById('createdNfoPath').textContent = state.createdNfoPath || '-';
+                document.getElementById('previewLoading').style.display = '';
+                document.getElementById('previewContent').style.display = 'none';
+                document.getElementById('btnFinish').disabled = true;
+                document.getElementById('uploadStatus').innerHTML = '';
+                loadPreviewData();
             }
         }
 
@@ -1814,21 +1893,52 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                 const nfoRes = await fetch(`${API_BASE}/api/nfo/save`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sourcePath: state.selectedFile, content: state.nfoContent, torrentName })
+                    body: JSON.stringify({ sourcePath: state.selectedFile, content: state.nfoContent, torrentName, mediaType: state.mediaType })
                 });
-                if (!nfoRes.ok) throw new Error('Erreur sauvegarde NFO');
+                if (!nfoRes.ok) throw new Error('Erreur sauvegarde NFO: ' + await nfoRes.text());
                 const nfoData = await nfoRes.json();
                 state.createdNfoPath = nfoData.nfoPath;
 
-                // Create torrent with the generated name
+                // Create torrent (async with progress)
                 const torrentRes = await fetch(`${API_BASE}/api/torrent/create`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sourcePath: state.selectedFile, trackers, comment: 'AATM', isPrivate, torrentName })
+                    body: JSON.stringify({ sourcePath: state.selectedFile, trackers, comment: 'AATM', isPrivate, torrentName, mediaType: state.mediaType })
                 });
-                if (!torrentRes.ok) throw new Error('Erreur creation torrent');
-                const torrentData = await torrentRes.json();
-                state.createdTorrentPath = torrentData.torrentPath;
+                if (!torrentRes.ok) throw new Error('Erreur creation torrent: ' + await torrentRes.text());
+                const { taskId } = await torrentRes.json();
+
+                // Poll for progress
+                const progressBar = document.getElementById('creationProgressBar');
+                const progressText = document.getElementById('creationProgressText');
+                let torrentPath = null;
+                while (true) {
+                    await new Promise(r => setTimeout(r, 800));
+                    const statusRes = await fetch(`${API_BASE}/api/torrent/status/${taskId}`);
+                    if (!statusRes.ok) throw new Error('Erreur status torrent: ' + await statusRes.text());
+                    const task = await statusRes.json();
+
+                    const pct = Math.round(task.progress * 100);
+                    progressBar.style.width = pct + '%';
+                    progressBar.textContent = pct + '%';
+
+                    if (task.status === 'hashing') {
+                        const hashedMB = (task.hashedBytes / (1024*1024)).toFixed(0);
+                        const totalMB = (task.totalBytes / (1024*1024)).toFixed(0);
+                        progressText.textContent = `Hachage en cours... ${hashedMB} / ${totalMB} Mo`;
+                    } else if (task.status === 'building') {
+                        progressText.textContent = 'Construction du fichier torrent...';
+                    }
+
+                    if (task.status === 'done') {
+                        torrentPath = task.torrentPath;
+                        break;
+                    }
+                    if (task.status === 'error') {
+                        throw new Error('Erreur creation torrent: ' + task.error);
+                    }
+                }
+                state.createdTorrentPath = torrentPath;
 
                 // Create hardlink if enabled
                 let hardlinkPath = null;
@@ -1889,6 +1999,8 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
 
         async function uploadToTorrentClient() {
             const statusEl = document.getElementById('uploadStatus');
+            // Vider la zone au début du workflow d'upload
+            statusEl.innerHTML = '';
             const clientName = state.settings.torrentClient || 'qbittorrent';
             if (clientName === 'none') {
                 statusEl.innerHTML = '<div class="alert alert-info">Aucun client torrent configure - etape ignoree</div>';
@@ -1900,7 +2012,10 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                 'deluge': 'Deluge'
             };
             const displayName = clientDisplayNames[clientName] || clientName;
-            statusEl.innerHTML = `<div class="loading"><div class="spinner"></div>Upload vers ${displayName}...</div>`;
+            // Créer un élément dédié pour le statut du client torrent
+            const clientDiv = document.createElement('div');
+            clientDiv.innerHTML = `<div class="loading"><div class="spinner"></div>Upload vers ${displayName}...</div>`;
+            statusEl.appendChild(clientDiv);
             try {
                 const res = await fetch(`${API_BASE}/api/torrent-client/upload`, {
                     method: 'POST',
@@ -1913,10 +2028,10 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                     const errText = await res.text();
                     throw new Error(errText || `Erreur upload ${displayName}`);
                 }
-                statusEl.innerHTML = `<div class="alert alert-success">Upload ${displayName} reussi!</div>`;
+                clientDiv.innerHTML = `<div class="alert alert-success">Upload ${displayName} reussi!</div>`;
                 showToast(`Upload ${displayName} OK!`, 'success');
             } catch (e) {
-                statusEl.innerHTML = `<div class="alert alert-danger">Erreur: ${e.message}</div>`;
+                clientDiv.innerHTML = `<div class="alert alert-danger">Erreur ${displayName}: ${e.message}</div>`;
                 showToast('Erreur: ' + e.message, 'error');
             }
         }
@@ -1928,27 +2043,17 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
 
         async function uploadToLaCale() {
             const statusEl = document.getElementById('uploadStatus');
-            statusEl.innerHTML = '<div class="loading"><div class="spinner"></div>Generation de la description et upload...</div>';
+            // Ajouter un élément dédié pour La-Cale (sans écraser le résultat du client torrent)
+            const laCaleDiv = document.createElement('div');
+            laCaleDiv.style.marginTop = '0.5rem';
+            laCaleDiv.innerHTML = '<div class="loading"><div class="spinner"></div>Upload La-Cale en cours...</div>';
+            statusEl.appendChild(laCaleDiv);
 
             try {
-                // Get total size if needed
-                let totalSize = null;
-                try {
-                    const sizeRes = await fetch(`${API_BASE}/api/directory-size?path=${encodeURIComponent(state.selectedFile)}`);
-                    const sizeData = await sizeRes.json();
-                    totalSize = sizeData.size;
-                } catch (e) {}
-
-                // Generate description
-                const description = await generatePresentation({
-                    releaseInfo: state.releaseInfo,
-                    tmdbId: state.tmdbId,
-                    mediaType: state.mediaType,
-                    nfoContent: state.nfoContent,
-                    totalSize
-                });
-
-                const torrentName = document.getElementById('torrentName').value || state.selectedFile.split('/').pop();
+                // Read values from preview fields (user may have modified them)
+                const title = document.getElementById('previewTitle').value || document.getElementById('torrentName').value || state.selectedFile.split('/').pop();
+                const description = document.getElementById('previewDescription').value || '';
+                const selectedTags = getSelectedTagIds();
 
                 const res = await fetch(`${API_BASE}/api/lacale/upload`, {
                     method: 'POST',
@@ -1956,13 +2061,14 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                     body: JSON.stringify({
                         torrentPath: state.createdTorrentPath,
                         nfoPath: state.createdNfoPath,
-                        title: torrentName,
+                        title: title,
                         description: description,
                         tmdbId: state.tmdbId,
                         mediaType: state.mediaType,
                         releaseInfo: state.releaseInfo,
                         passkey: state.settings.passkey,
-                        apiKey: state.settings.laCaleApiKey
+                        apiKey: state.settings.laCaleApiKey,
+                        tags: selectedTags
                     })
                 });
 
@@ -1971,15 +2077,161 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
                     throw new Error(errText || 'Erreur upload La-Cale');
                 }
 
-                statusEl.innerHTML = '<div class="alert alert-success">Upload La-Cale reussi!</div>';
+                laCaleDiv.innerHTML = '<div class="alert alert-success">Upload La-Cale reussi!</div>';
                 showToast('Upload La-Cale OK!', 'success');
+                return true;
             } catch (e) {
-                statusEl.innerHTML = `<div class="alert alert-danger">Erreur: ${e.message}</div>`;
-                showToast('Erreur: ' + e.message, 'error');
+                laCaleDiv.innerHTML = `<div class="alert alert-danger">Erreur upload La-Cale : ${e.message}</div>`;
+                showToast('Erreur La-Cale: ' + e.message, 'error');
+                return false;
             }
         }
 
-        async function finishWorkflow() {
+        async function loadPreviewData() {
+            // Afficher le contenu immédiatement, masquer le chargement
+            document.getElementById('previewLoading').style.display = 'none';
+            document.getElementById('previewContent').style.display = 'block';
+            document.getElementById('btnFinish').disabled = true;
+
+            // Titre
+            try {
+                const torrentEl = document.getElementById('torrentName');
+                const torrentName = (torrentEl && torrentEl.value) ||
+                    (state.selectedFile ? state.selectedFile.split('/').pop() : '');
+                document.getElementById('previewTitle').value = torrentName;
+            } catch (e) { console.error('previewTitle error:', e); }
+
+            // Taille totale
+            let totalSize = null;
+            try {
+                const sizeRes = await fetch(`${API_BASE}/api/directory-size?path=${encodeURIComponent(state.selectedFile)}`);
+                const sizeData = await sizeRes.json();
+                totalSize = sizeData.size;
+            } catch (e) {}
+
+            // Description BBCode (génération indépendante)
+            let description = '';
+            try {
+                description = await generatePresentation({
+                    releaseInfo: state.releaseInfo,
+                    tmdbId: state.tmdbId,
+                    mediaType: state.mediaType,
+                    nfoContent: state.nfoContent,
+                    totalSize
+                });
+            } catch (e) {
+                console.error('generatePresentation error:', e);
+            }
+            document.getElementById('previewDescription').value = description || '';
+            updateBbcodePreview();
+
+            // Preview La-Cale (catégorie + tags, indépendant)
+            let previewData = null;
+            try {
+                const previewRes = await fetch(`${API_BASE}/api/lacale/preview`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mediaType: state.mediaType,
+                        releaseInfo: state.releaseInfo,
+                        apiKey: state.settings.laCaleApiKey
+                    })
+                });
+                if (previewRes.ok) {
+                    previewData = await previewRes.json();
+                } else {
+                    console.warn('preview API:', previewRes.status, await previewRes.text());
+                }
+            } catch (e) {
+                console.error('preview API error:', e);
+            }
+            state.previewData = previewData;
+
+            // Catégorie
+            document.getElementById('previewCategory').textContent =
+                (previewData && previewData.categoryName) ? previewData.categoryName : 'Non detectee';
+
+            // Tags
+            renderTagGroups(previewData);
+
+            // Activer le bouton upload
+            document.getElementById('btnFinish').disabled = false;
+        }
+
+        function bbcodeToHtml(text) {
+            if (!text) return '';
+            let h = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            h = h.replace(/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>');
+            h = h.replace(/\[i\]([\s\S]*?)\[\/i\]/gi, '<em>$1</em>');
+            h = h.replace(/\[u\]([\s\S]*?)\[\/u\]/gi, '<u>$1</u>');
+            h = h.replace(/\[center\]([\s\S]*?)\[\/center\]/gi, '<div style="text-align:center">$1</div>');
+            h = h.replace(/\[img\]([\s\S]*?)\[\/img\]/gi, '<img src="$1" alt="">');
+            h = h.replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, '<a href="$1" target="_blank" rel="noopener">$2</a>');
+            h = h.replace(/\[url\]([\s\S]*?)\[\/url\]/gi, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+            h = h.replace(/\[quote\]([\s\S]*?)\[\/quote\]/gi, '<div class="bbcode-quote">$1</div>');
+            h = h.replace(/\[size=(\d+)\]([\s\S]*?)\[\/size\]/gi, (_, sz, ct) => {
+                const px = Math.min(Math.max(parseInt(sz) * 4, 10), 40);
+                return `<span style="font-size:${px}px">${ct}</span>`;
+            });
+            h = h.replace(/\[color=([^\]]+)\]([\s\S]*?)\[\/color\]/gi, (_, cl, ct) => `<span style="color:${cl}">${ct}</span>`);
+            h = h.replace(/\n/g, '<br>');
+            return h;
+        }
+
+        function switchBbcodeTab(tab, el) {
+            document.querySelectorAll('.bbcode-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.bbcode-tab-content').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+            document.getElementById(tab === 'source' ? 'bbcodeTabSource' : 'bbcodeTabRender').classList.add('active');
+            if (tab === 'render') updateBbcodePreview();
+        }
+
+        function updateBbcodePreview() {
+            const text = document.getElementById('previewDescription').value;
+            document.getElementById('bbcodePreviewRender').innerHTML = bbcodeToHtml(text);
+        }
+
+        function renderTagGroups(previewData) {
+            const container = document.getElementById('previewTags');
+            if (!previewData || !previewData.allTagGroups || previewData.allTagGroups.length === 0) {
+                container.innerHTML = '<span style="color:var(--text-muted)">Aucun tag disponible</span>';
+                return;
+            }
+
+            // Build set of matched tag IDs
+            const matchedIds = new Set();
+            if (previewData.matchedTags) {
+                previewData.matchedTags.forEach(t => matchedIds.add(t.id));
+            }
+
+            let html = '';
+            for (const group of previewData.allTagGroups) {
+                if (!group.tags || group.tags.length === 0) continue;
+                html += `<div class="tag-group">`;
+                html += `<div class="tag-group-title">${group.name}</div>`;
+                html += `<div class="tag-chips">`;
+                for (const tag of group.tags) {
+                    const selected = matchedIds.has(tag.id) ? ' selected' : '';
+                    html += `<span class="tag-chip${selected}" data-tag-id="${tag.id}" onclick="toggleTag(this)">${tag.name}</span>`;
+                }
+                html += `</div></div>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function toggleTag(el) {
+            el.classList.toggle('selected');
+        }
+
+        function getSelectedTagIds() {
+            const chips = document.querySelectorAll('#previewTags .tag-chip.selected');
+            return Array.from(chips).map(c => c.dataset.tagId);
+        }
+
+        async function finishWorkflow(skipLaCale = false) {
             const btn = document.getElementById('btnFinish');
             btn.disabled = true;
             btn.textContent = 'Upload en cours...';
@@ -1987,8 +2239,30 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
             // Upload to torrent client first (qBittorrent, Transmission, Deluge)
             await uploadToTorrentClient();
 
-            // Then upload to La-Cale
-            await uploadToLaCale();
+            // Upload to La-Cale (unless skipped)
+            let laCaleOk = true;
+            if (!skipLaCale) {
+                laCaleOk = await uploadToLaCale();
+            }
+
+            if (!laCaleOk) {
+                // Upload La-Cale échoué : rester sur l'étape 5, informer l'utilisateur
+                btn.disabled = false;
+                btn.textContent = 'Réessayer l\'upload';
+                const statusEl = document.getElementById('uploadStatus');
+                const torrentPath = state.createdTorrentPath || '-';
+                const nfoPath = state.createdNfoPath || '-';
+                const warningDiv = document.createElement('div');
+                warningDiv.style.marginTop = '0.5rem';
+                warningDiv.innerHTML = `<div class="alert alert-warning">
+                    <strong>Fichiers locaux créés avec succès :</strong><br>
+                    Torrent : <code>${torrentPath}</code><br>
+                    NFO : <code>${nfoPath}</code><br>
+                    <button class="btn btn-secondary" onclick="finishWorkflow(true)" style="margin-top:0.5rem;">Terminer sans upload La-Cale</button>
+                </div>`;
+                statusEl.appendChild(warningDiv);
+                return;
+            }
 
             // Reset state
             state.selectedFile = null;
@@ -2003,6 +2277,7 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
             state.bookData = null;
             state.steamId = '';
             state.gameData = null;
+            state.previewData = null;
             navigateTo('files');
             showToast('Workflow termine!', 'success');
         }
@@ -2021,6 +2296,7 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
 
         function loadSettingsForm() {
             document.getElementById('settingRootPath').value = state.settings.rootPath || '/media';
+            document.getElementById('settingOutputDir').value = state.settings.outputDir || '/torrents';
             document.getElementById('settingTrackers').value = state.settings.torrentTrackers || '';
             // Torrent client selection
             document.getElementById('settingTorrentClient').value = state.settings.torrentClient || 'qbittorrent';
@@ -2058,6 +2334,7 @@ ${headerImage ? `[img]${headerImage}[/img]` : ''}
 
             const settings = {
                 rootPath: document.getElementById('settingRootPath').value,
+                outputDir: document.getElementById('settingOutputDir').value || '/torrents',
                 torrentTrackers: document.getElementById('settingTrackers').value,
                 // Torrent client
                 torrentClient: document.getElementById('settingTorrentClient').value,

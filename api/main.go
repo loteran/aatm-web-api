@@ -106,20 +106,29 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"mediainfo": info})
 	})
 
-	// Torrent creation
+	// Torrent creation (async)
 	r.Post("/api/torrent/create", func(w http.ResponseWriter, r *http.Request) {
 		var req CreateTorrentRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		torrentPath, err := app.CreateTorrent(req.SourcePath, req.Trackers, req.Comment, req.IsPrivate, req.TorrentName)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		settings := app.GetSettings()
+		taskID := app.StartCreateTorrent(req.SourcePath, req.Trackers, req.Comment, req.IsPrivate, req.TorrentName, settings.OutputDir, req.MediaType)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"taskId": taskID})
+	})
+
+	// Torrent creation status
+	r.Get("/api/torrent/status/{taskId}", func(w http.ResponseWriter, r *http.Request) {
+		taskID := chi.URLParam(r, "taskId")
+		task := app.TaskMgr.GetTask(taskID)
+		if task == nil {
+			http.Error(w, "task not found", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"torrentPath": torrentPath})
+		json.NewEncoder(w).Encode(task)
 	})
 
 	// NFO operations
@@ -129,7 +138,8 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		nfoPath, err := app.SaveNfo(req.SourcePath, req.Content, req.TorrentName)
+		settings := app.GetSettings()
+		nfoPath, err := app.SaveNfo(req.SourcePath, req.Content, req.TorrentName, settings.OutputDir, req.MediaType)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -273,6 +283,21 @@ func main() {
 	})
 
 	// La Cale integration
+	r.Post("/api/lacale/preview", func(w http.ResponseWriter, r *http.Request) {
+		var req LaCalePreviewRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		preview, err := app.PreviewLaCale(req.MediaType, req.ReleaseInfo, req.ApiKey)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(preview)
+	})
+
 	r.Post("/api/lacale/upload", func(w http.ResponseWriter, r *http.Request) {
 		var req LaCaleUploadRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -289,6 +314,7 @@ func main() {
 			req.ReleaseInfo,
 			req.Passkey,
 			req.ApiKey,
+			req.Tags,
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -387,12 +413,14 @@ type CreateTorrentRequest struct {
 	Comment     string   `json:"comment"`
 	IsPrivate   bool     `json:"isPrivate"`
 	TorrentName string   `json:"torrentName"`
+	MediaType   string   `json:"mediaType"`
 }
 
 type SaveNfoRequest struct {
 	SourcePath  string `json:"sourcePath"`
 	Content     string `json:"content"`
 	TorrentName string `json:"torrentName"`
+	MediaType   string `json:"mediaType"`
 }
 
 type QBittorrentRequest struct {
@@ -411,5 +439,12 @@ type LaCaleUploadRequest struct {
 	MediaType   string      `json:"mediaType"`
 	ReleaseInfo ReleaseInfo `json:"releaseInfo"`
 	Passkey     string      `json:"passkey"`
+	ApiKey      string      `json:"apiKey"`
+	Tags        []string    `json:"tags"`
+}
+
+type LaCalePreviewRequest struct {
+	MediaType   string      `json:"mediaType"`
+	ReleaseInfo ReleaseInfo `json:"releaseInfo"`
 	ApiKey      string      `json:"apiKey"`
 }
