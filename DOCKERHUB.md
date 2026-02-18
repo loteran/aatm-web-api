@@ -2,9 +2,9 @@
 
 **AATM Web API** (Amazing Automatic Torrent Maker) est un conteneur Docker avec **interface web** pour créer des fichiers **.torrent** avec **qBittorrent intégré**.
 
-Il permet de naviguer dans vos fichiers, générer des torrents et NFO, et uploader directement vers qBittorrent ou La-Cale.
+Il permet de naviguer dans vos fichiers, générer des torrents et NFO, et uploader directement vers votre client torrent ou La-Cale.
 
-> 🙏 **Basé sur** [zedeska/aatm](https://github.com/zedeska/aatm) - Merci pour le code original !
+> 🙏 **Basé sur** [zedeska/aatm](https://github.com/zedeska/aatm)
 
 ---
 
@@ -13,11 +13,17 @@ Il permet de naviguer dans vos fichiers, générer des torrents et NFO, et uploa
 - 🌐 **Interface web** moderne dark mode
 - 📁 **Explorateur de fichiers** avec navigation complète
 - 🎬 Affichage **MediaInfo** des fichiers vidéo
-- 🧲 Création de fichiers `.torrent`
+- 🧲 Création de fichiers `.torrent` (avec progression en temps réel)
 - 📝 Génération de fichiers **NFO**
-- ⬆️ Upload automatique vers **qBittorrent** (intégré)
-- 🚀 Upload vers **La-Cale** (tracker privé)
-- ⚙️ Configuration via interface web
+- 📂 **Répertoire de sortie configurable** avec organisation automatique :
+  - `{outputDir}/Films/{nom}/` pour les films
+  - `{outputDir}/Séries/{nom}/` pour les séries
+  - `{outputDir}/Ebooks/{nom}/` pour les ebooks
+  - `{outputDir}/Jeux/{nom}/` pour les jeux
+- ⬆️ Upload automatique vers **qBittorrent**, **Transmission** ou **Deluge**
+- 🚀 Upload vers **La-Cale** (tracker privé) avec aperçu des tags/catégories
+- 🔗 Création de **hardlinks** automatique
+- ⚙️ Configuration complète via interface web
 - 📜 Historique des fichiers traités
 - 🐳 qBittorrent inclus dans le conteneur
 
@@ -27,7 +33,6 @@ Il permet de naviguer dans vos fichiers, générer des torrents et NFO, et uploa
 
 | Variable | Description | Défaut |
 |----------|-------------|--------|
-| `MEDIA_PATH` | Chemin vers vos médias sur l'hôte | `/` |
 | `AATM_API_PORT` | Port de l'interface web | `8085` |
 | `AATM_QBIT_PORT` | Port du WebUI qBittorrent | `8086` |
 | `TZ` | Timezone | `Europe/Paris` |
@@ -39,10 +44,42 @@ Il permet de naviguer dans vos fichiers, générer des torrents et NFO, et uploa
 | Chemin conteneur | Description |
 |------------------|-------------|
 | `/host` | Système de fichiers hôte (lecture seule) |
-| `/media` | Médias avec accès écriture |
-| `/data` | Base de données et settings |
+| `/host/mnt` | `/mnt` hôte avec accès écriture |
+| `/host/media` | `/media` hôte avec accès écriture |
+| `/host/home` | `/home` hôte avec accès écriture |
+| `/data` | Base de données et settings persistants |
 | `/config/qBittorrent` | Configuration qBittorrent |
-| `/torrents` | Fichiers .torrent générés |
+| `/torrents` | Répertoire de sortie par défaut (.torrent et .nfo) |
+
+---
+
+## 📂 Organisation des fichiers de sortie
+
+Les fichiers `.torrent` et `.nfo` sont organisés automatiquement :
+
+```
+/torrents/
+├── Films/
+│   └── The.Game.1997.MULTi.1080p.BluRay.AC3.5.1.X265-MM91/
+│       ├── The.Game.1997.MULTi.1080p.BluRay.AC3.5.1.X265-MM91.torrent
+│       └── The.Game.1997.MULTi.1080p.BluRay.AC3.5.1.X265-MM91.nfo
+├── Séries/
+├── Ebooks/
+└── Jeux/
+```
+
+Le répertoire de sortie est configurable dans **Paramètres > Chemins > Répertoire de sortie**.
+
+---
+
+## 🎛️ Clients torrent supportés
+
+| Client | Support |
+|--------|---------|
+| qBittorrent | ✅ (intégré dans le conteneur) |
+| Transmission | ✅ (instance externe) |
+| Deluge | ✅ (instance externe) |
+| Aucun | ✅ (désactiver l'upload automatique) |
 
 ---
 
@@ -64,32 +101,26 @@ services:
     volumes:
       - ./data:/data
       - ./qbt-config:/config/qBittorrent
-      - /:/host:ro
-      - /your/media/path:/media
       - ./torrents:/torrents
+      # Lecture seule pour la navigation
+      - /:/host:ro
+      # Écriture pour hardlinks/torrents/nfo
+      - /mnt:/host/mnt
+      - /media:/host/media
+      - /home:/host/home
 ```
+
+> ℹ️ Pour des médias dans `/data` ou `/srv`, ajoutez : `- /data:/host/data`
 
 ---
 
 ## 🔑 Clé API La-Cale
 
-Pour uploader vos torrents sur **La-Cale**, vous devez générer une clé API :
-
 1. Rendez-vous sur **https://la-cale.space/settings/api-keys**
 2. Générez une nouvelle clé API
-3. Renseignez-la dans **Paramètres > La-Cale > Clé API** de l'interface AATM
+3. Renseignez-la dans **Paramètres > La-Cale > Clé API**
 
----
-
-## 🖥️ Utilisation
-
-1. Lancez le conteneur
-2. Accédez à `http://votre-ip:8085`
-3. Configurez votre clé API La-Cale dans les paramètres
-4. Naviguez dans `/host` pour trouver vos fichiers
-5. Sélectionnez un fichier vidéo
-6. Suivez le workflow de création de torrent
-7. Upload automatique vers qBittorrent et/ou La-Cale
+En cas d'échec de l'upload, les fichiers locaux sont conservés et un bouton **"Terminer sans upload La-Cale"** est proposé.
 
 ---
 
@@ -103,11 +134,19 @@ Pour uploader vos torrents sur **La-Cale**, vous devez générer une clé API :
 
 ---
 
-## 📝 Notes
+## 📋 Changelog
 
-- La configuration est persistante dans `/data`
-- qBittorrent est intégré dans le conteneur
-- Compatible architectures `amd64` (PC/UNRAID) et `arm64` (Raspberry Pi)
+### v4.0.1
+- Répertoire de sortie configurable pour `.torrent` et `.nfo`
+- Organisation automatique en sous-dossiers par type (Films/, Séries/, Ebooks/, Jeux/)
+- Correction affichage des statuts Transmission et La-Cale (blocs séparés)
+- Correction : pas de redirection en cas d'échec upload La-Cale
+- Bouton "Terminer sans upload La-Cale" en cas d'échec
+
+### v4.0.0
+- API La-Cale avec aperçu des catégories et tags
+- Support Transmission et Deluge
+- Workflow en 5 étapes
 
 ---
 
